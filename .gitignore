@@ -1,0 +1,9 @@
+# .gitignore for PyCharm
+# Andrew McDonald
+
+# ignore PyCharm project folders
+.idea/
+__pycache__/
+venv/
+
+

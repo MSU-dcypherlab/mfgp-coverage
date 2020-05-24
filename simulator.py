@@ -30,9 +30,11 @@ def init_MFGP(hyp, prior):
 
     return model
 
+
 def init_SFGP(hyp):
     # TODO: Implement SFGP
     pass
+
 
 def plot_voronoi(vor, bounding_box):
     # Plot initial points
@@ -48,6 +50,7 @@ def plot_voronoi(vor, bounding_box):
     plt.xlim(bounding_box[0] - 0.1, bounding_box[1] + 0.1)
     plt.ylim(bounding_box[2] - 0.1, bounding_box[3] + 0.1)
     plt.show()
+
 
 def in_polygon(xq, yq, xv, yv):
     """
@@ -68,6 +71,17 @@ def in_polygon(xq, yq, xv, yv):
     q = [(xq[i], yq[i]) for i in range(xq.shape[0])]
     p = path.Path([(xv[i], yv[i]) for i in range(xv.shape[0])])
     return p.contains_points(q).reshape(shape)
+
+
+def poly_area(x, y):
+    """
+    Retrieved from https://stackoverflow.com/a/30408825 May 24, 2020
+    Implementation of the Shoelace formula for computing polygonal area (https://en.wikipedia.org/wiki/Shoelace_formula)
+    :param x:
+    :param y:
+    :return:
+    """
+    return 0.5*np.abs(np.dot(x,np.roll(y,1))-np.dot(y,np.roll(x,1)))
 
 
 def in_box(points, bounding_box):
@@ -147,24 +161,80 @@ def compute_loss(vor, truth_arr):
 
         # 3) compute cell loss by Equation 2 in Todescato et. al.
         center = vor.filtered_points[i, :]
-
         distances = np.sum((in_points[:, [0, 1]] - center)**2, axis=1)  # dist_from_center = dx^2 + dy^2 for each row
-        point_loss = distances * in_points[:, 2]    # loss_of_each_point = dist * f_val
-        cell_loss = np.mean(point_loss)  # loss_of_each_cell = integral(loss_of_each_point), discretized as average
+        point_loss = distances * in_points[:, 2]        # loss_of_each_point = dist * f_val
+        cell_area = poly_area(vertices[:, 0], vertices[:, 1])
+        cell_loss = np.mean(point_loss) * cell_area     # cell_loss = integral(point_loss), discretized as average
         loss += cell_loss
 
         # plt.plot(in_points[:,0], in_points[:,1], 'ro')
         # plt.plot(center[0], center[1], 'go')
-        # plt.xlim((0,1))
-        # plt.ylim((0,1))
+        # plt.xlim((-0.1, 1.1))
+        # plt.ylim((-0.1, 1.1))
         # plt.show()
 
     # 4) return loss summed over all cells
     return loss
 
 
-def mfgp_todescato(name, iterations, agents, positions, truth, prior, hyp, plot=False):
-    print(line_break + "MFGP Todescato" + line_break)
+def compute_centroids(vor, truth_arr):
+    centroids = np.empty([0, 2])
+
+    # 1) iterate over each cell in voronoi partition and compute centroid
+    for i, cell in enumerate(vor.filtered_regions):
+        # 2) select only the truth points in this cell from truth_arr
+        vertices = vor.vertices[cell, :]
+        in_indices = in_polygon(truth_arr[:, 0], truth_arr[:, 1], vertices[:, 0], vertices[:, 1])
+        in_points = truth_arr[in_indices, :]
+
+        # 3) compute weighted cell centroid by Equation 1 in Todescato et. al.
+        cell_area = poly_area(vertices[:, 0], vertices[:, 1])
+        f_integral = np.mean(in_points[:, 2]) * cell_area   # discretized scalar integral of f over cell
+        weights = np.column_stack((in_points[:, 2], in_points[:, 2]))     # create nx2 array from nx1 array of f_vals
+        weighted_points = np.multiply(weights, in_points[:, [0, 1]])   # (x,y) weighted by f elementwise
+        weighted_integral = np.mean(weighted_points, axis=0) * cell_area    # discretized 1x2 integral of (x*f, y*f)
+        centroid = weighted_integral / f_integral   # mean 1x2 weighted location of cell
+        centroids = np.vstack((centroids, centroid))
+
+        # plt.scatter(in_points[:, 0], in_points[:, 1], c=in_points[:, 2])
+        # plt.plot(centroid[0], centroid[1], 'k+')
+        # plt.xlim((-0.1, 1.1))
+        # plt.ylim((-0.1, 1.1))
+        # plt.show()
+
+    return centroids
+
+
+def compute_max_var(vor, truth_arr, var_star):
+    argmax_var_t = np.empty([0, 2])
+    max_var_t = np.empty([0, 1])
+    var = np.diag(var_star)     # point variances are diagonal of cov matrix
+
+    # 1) iterate over each cell in voronoi partition and find max, argmax
+    for i, cell in enumerate(vor.filtered_regions):
+        # 2) select only the points in this cell from truth_arr
+        vertices = vor.vertices[cell, :]
+        in_indices = in_polygon(truth_arr[:, 0], truth_arr[:, 1], vertices[:, 0], vertices[:, 1])
+        in_points = truth_arr[in_indices, :]
+        in_var = var[in_indices]
+
+        # 3) find max, argmax of var in this cell and save
+        max_var = np.amax(in_var)
+        argmax_var = in_points[in_var == max_var, :][0, [0, 1]]    # pick first of multiple argmax's and take (x,y) only
+        argmax_var_t = np.vstack((argmax_var_t, argmax_var))
+        max_var_t = np.vstack((max_var_t, max_var))
+
+        # plt.scatter(in_points[:, 0], in_points[:, 1], c=in_var)
+        # plt.plot(argmax_var[0], argmax_var[1], 'k+')
+        # plt.xlim((-0.1, 1.1))
+        # plt.ylim((-0.1, 1.1))
+        # plt.show()
+
+    return argmax_var_t, max_var_t
+
+
+def mfgp_todescato(name, iterations, agents, positions, truth, prior, hyp, plot, log):
+    print(line_break + "MFGP Todescato" + line_break) if log else None
 
     # 1) initialize MFGP model with hyperparameters and empty prior
     model = init_MFGP(hyp, prior=None)
@@ -179,52 +249,78 @@ def mfgp_todescato(name, iterations, agents, positions, truth, prior, hyp, plot=
     # 3) compute max predictive variance and keep as normalizing constant
     mu_star, var_star = model.predict(x_star)
     max_var_0 = np.amax(var_star)
-    print("Max Initial Predictive Variance: " + str(max_var_0))
+    print("Max Initial Predictive Variance: " + str(max_var_0)) if log else None
 
     # 4) initialize MFGP model with prior and force-update model
     model = init_MFGP(hyp, prior=prior)
     model.updt_info(model.X_L, model.y_L, model.X_H, model.y_H)
 
-    # 5) compute prediction given prior initialize relevant explore/exploit decision variables
+    # 5) compute prediction given prior and initialize relevant explore/exploit decision variables
     mu_star, var_star = model.predict(x_star)
     max_var_t = np.amax(var_star) * np.ones((agents, 1))
     prob_explore_t = max_var_t / max_var_0 * np.ones((agents, 1))
     explore_t = np.zeros((agents, 1))   # initialize to zero so agents do not sample on first iteration
+    centroids_t = positions # initialize centroids governing Lloyd iterations to current positions
 
     # 6) begin iterative portion of algorithm
     for iteration in range(iterations):
-        print(f"Iteration {iteration}")
+        print(f"\nIteration {iteration}") if log else None
 
         # 7) record samples from each agent on explore step (Todescato "Listen")
-        for i in range(len(agents)):
-            if prob_explore_t[i] == 1:  # this robot is on an explore step: take sample
+        x_new = np.empty([0, 2])
+        y_new = np.empty([0, 1])
+        for i in range(agents):
+            if explore_t[i] == 1:  # this robot is on an explore step: take sample
                 # take sample
-                print('sample')
+                x_sample = positions[i, :]
+                sample_idx = np.logical_and(truth_arr[:, 0] == x_sample[0], truth_arr[:, 1] == x_sample[1])
+                y_sample = truth_arr[sample_idx, 2]  # retrieve f_val at matching point
+                print(f"Robot {i} explored {x_sample} and sampled {y_sample}") if log else None
+                x_new = np.vstack((x_new, x_sample))
+                y_new = np.vstack((y_new, y_sample))
+            else:
+                print(f"Robot {i} exploited to {centroids_t[i, :]}") if log else None
 
-        # 8) update GP estimates (Todescato "Estimate update")
+        # 8) update GP model and estimates (Todescato "Estimate update")
+        model.updt_hifi(x_new, y_new)
+        mu_star, var_star = model.predict(x_star)
 
         # 9) compute loss given current positions
         loss_vor = voronoi_bounded(positions, bounding_box)
-        plot_voronoi(loss_vor, bounding_box)
-        loss_t = compute_loss(positions, loss_vor, truth_arr)
+        plot_voronoi(loss_vor, bounding_box) if plot else None
+        loss_t = compute_loss(loss_vor, truth_arr)
+        print(f"Current loss: {loss_t}") if log else None
 
         # 10) update partitions and centroids (Todescato "Partition and centroids update")
+        lloyd_vor = voronoi_bounded(centroids_t, bounding_box)
+        plot_voronoi(lloyd_vor, bounding_box) if plot else None
+        centroids_t = compute_centroids(lloyd_vor, truth_arr)
 
         # 11) compute points of max variance and make explore/exploit decision (Todescato "Target-Points computation")
+        argmax_var_t, max_var_t = compute_max_var(lloyd_vor, truth_arr, var_star)
+        prob_explore_t = max_var_t / max_var_0
+        explore_t = np.array([random.random() < cutoff for cutoff in prob_explore_t])    # Bernoulli wrt prob_explore_t
+        print(f"Max var by cell: {max_var_t.flatten()}") if log else None
+        print(f"Normalizing max var: {max_var_0}") if log else None
+        print(f"Probability of exploration: {prob_explore_t.flatten()}") if log else None
+        print(f"Decision of exploration: {explore_t.flatten()}") if log else None
 
-        # 12) update agent positions (Todescato "Target-Points transmission"
-
-
-        # TODO: finish Todescato MFGP
+        # 12) update agent positions (Todescato "Target-Points transmission")
+        for i in range(agents):
+            if explore_t[i] == 1:
+                positions[i, :] = argmax_var_t[i, :]
+            else:
+                positions[i, :] = centroids_t[i, :]
 
 
 if __name__ == "__main__":
 
     name = "ex"
     agents = 4
-    iterations = 1
+    iterations = 100
     simulations = 1
     plot = False
+    log = True
 
     truth = pd.read_csv(name + "_truth.csv")
     hyp = pd.read_csv(name + "_hyp.csv")
@@ -237,5 +333,5 @@ if __name__ == "__main__":
         y_positions = [random.random() for i in range(agents)]
         positions = np.column_stack((x_positions, y_positions))
 
-        mfgp_todescato(name, iterations, agents, positions, truth, prior, hyp, plot)
+        mfgp_todescato(name, iterations, agents, positions, truth, prior, hyp, plot, log)
 

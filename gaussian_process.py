@@ -271,6 +271,11 @@ class MFGP:
                        np.hstack((K_LH.T, K_HH))))
         self.L = np.linalg.cholesky(K + np.eye(N) * self.jitter)
 
+    def updt_hifi(self, X_H_addition, y_H_addition):
+        self.X_H = np.vstack((self.X_H, X_H_addition))
+        self.y_H = np.vstack((self.y_H, y_H_addition))
+        self.updt_info(self.X_L, self.y_L, self.X_H, self.y_H)
+
     # Return posterior mean and variance at a set of test points
     def predict(self, X_star):
         hyp = self.hyp

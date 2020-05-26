@@ -12,11 +12,13 @@ from autograd import value_and_grad
 from scipy.optimize import minimize
 from scipy.stats import norm
 from scipy.optimize import differential_evolution
+from numba import jit
 
 
 # A minimal Gaussian process class
 class SFGP:
     # Initialize the class
+    #@jit
     def __init__(self, X, y, len):
         self.D = X.shape[1]
         self.X = X
@@ -31,6 +33,7 @@ class SFGP:
         # print("Total number of parameters: %d" % (self.hyp.shape[0]))
 
     # Initialize hyper-parameters
+    #@jit
     def init_params(self, len):
         hyp = np.log(np.ones(self.D + 1))
         self.idx_theta = np.arange(hyp.shape[0])
@@ -43,6 +46,7 @@ class SFGP:
         return hyp
 
     # A simple vectorized rbf kernel
+    #@jit
     def kernel(self, x, xp, hyp):
         output_scale = np.exp(hyp[0])
         lengthscales = np.exp(hyp[1])
@@ -52,6 +56,7 @@ class SFGP:
         return output_scale * np.exp(-0.5 * np.sum(diffs ** 2, axis=2))
 
     # Computes the negative log-marginal likelihood
+    #@jit
     def likelihood(self, hyp):
         X = self.X
         y = self.y
@@ -73,12 +78,14 @@ class SFGP:
         return NLML[0, 0]
 
     # Minimizes the negative log-marginal likelihood
+    #@jit
     def train(self):
         result = minimize(value_and_grad(self.likelihood), self.hyp, jac=True,
                           method='L-BFGS-B', callback=self.callback)
         self.hyp = result.x
 
     # Return posterior mean and variance at a set of test points
+    #@jit
     def predict(self, X_star):
         X = self.X
         y = self.y
@@ -97,6 +104,7 @@ class SFGP:
 
         return pred_u_star, var_u_star
 
+    #@jit
     def ExpectedImprovement(self, X_star):
         X = self.X
         y = self.y
@@ -121,12 +129,14 @@ class SFGP:
 
         return EI_acq
 
+    #@jit
     def draw_prior_samples(self, X_star, N_samples=1):
         N = X_star.shape[0]
         theta = self.hyp[self.idx_theta]
         K = self.kernel(X_star, X_star, theta)
         return np.random.multivariate_normal(np.zeros(N), K, N_samples).T
 
+    #@jit
     def draw_posterior_samples(self, X_star, N_samples=1):
         X = self.X
         y = self.y
@@ -147,6 +157,7 @@ class SFGP:
                                              var_u_star, N_samples).T
 
     #  Prints the negative log-marginal likelihood at each training step
+    #@jit
     def callback(self, params):
         print("Log likelihood {}".format(self.likelihood(params)))
 
@@ -154,6 +165,7 @@ class SFGP:
 # A minimal GP multi-fidelity class (two levels of fidelity)
 class MFGP:
     # Initialize the class
+    #@jit
     def __init__(self, X_L, y_L, X_H, y_H, len_L, len_H):
         self.D = X_H.shape[1]
         self.X_L = X_L
@@ -168,6 +180,7 @@ class MFGP:
         self.jitter = 1e-8
 
     # Initialize hyper-parameters
+    #@jit
     def init_params(self, len_L, len_H):
         hyp = np.ones(self.D + 1)
         hyp[0] = 0
@@ -187,6 +200,7 @@ class MFGP:
         return hyp
 
     # A simple vectorized rbf kernel
+    #@jit
     def kernel(self, x, xp, hyp):
         output_scale = np.exp(hyp[1])
         lengthscales = np.exp(hyp[2])
@@ -196,6 +210,7 @@ class MFGP:
         return output_scale * np.exp(-0.5 * np.sum(diffs ** 2, axis=2))
 
     # Computes the negative log-marginal likelihood
+    #@jit
     def likelihood(self, hyp):
         # hyp = np.exp(self.hyp)
         rho = np.exp(hyp[-3])
@@ -238,11 +253,13 @@ class MFGP:
         return NLML[0, 0]
 
     # Minimizes the negative log-marginal likelihood
+    #@jit
     def train(self):
         result = minimize(value_and_grad(self.likelihood), self.hyp, jac=True,
                           method='L-BFGS-B', callback=self.callback)
         self.hyp = result.x
 
+    #@jit
     def updt_info(self, X_L_new, y_L_new, X_H_new, y_H_new):
         self.X_L = X_L_new
         self.y_L = y_L_new
@@ -271,12 +288,14 @@ class MFGP:
                        np.hstack((K_LH.T, K_HH))))
         self.L = np.linalg.cholesky(K + np.eye(N) * self.jitter)
 
+    #@jit
     def updt_hifi(self, X_H_addition, y_H_addition):
         self.X_H = np.vstack((self.X_H, X_H_addition))
         self.y_H = np.vstack((self.y_H, y_H_addition))
         self.updt_info(self.X_L, self.y_L, self.X_H, self.y_H)
 
     # Return posterior mean and variance at a set of test points
+    #@jit
     def predict(self, X_star):
         hyp = self.hyp
         theta_L = hyp[self.idx_theta_L]
@@ -309,6 +328,7 @@ class MFGP:
 
         return pred_u_star, var_u_star
 
+    #@jit
     def pred_var(self, x, X_L_new, X_H_new):
         hyp = self.hyp
         rho = np.exp(hyp[-3])
@@ -343,9 +363,11 @@ class MFGP:
         return var_u_star
 
     #  Prints the negative log-marginal likelihood at each training step
+    #@jit
     def callback(self, params):
         print("Log likelihood {}".format(self.likelihood(params)))
 
+    #@jit
     def get_neg_var(self, x, thrd, c, X_L_new, X_H_new):
         x = x[None, :]
         mean, var_old = self.predict(x)
@@ -357,6 +379,7 @@ class MFGP:
             var = self.pred_var(x, X_L_new, X_H_new)
             return -var
 
+    #@jit
     def get_max_var(self, Bounds, Thrd, c, X_L_new, X_H_new):
         Bounds = ([Bounds[0][0], Bounds[1][0]], [Bounds[0][1], Bounds[1][1]])
         result = differential_evolution(self.get_neg_var, Bounds, args=(Thrd, c, X_L_new, X_H_new), init='random')

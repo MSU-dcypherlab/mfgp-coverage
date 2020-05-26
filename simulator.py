@@ -1,13 +1,15 @@
 import sys
 import random
+import cProfile
 import numpy as np
 import pandas as pd
 from scipy.spatial import Voronoi, voronoi_plot_2d
 import matplotlib.pyplot as plt
 from matplotlib import path
 from gaussian_process import MFGP, SFGP
+from plotter import Plotter
 
-eps = sys.float_info.epsilon
+eps = 0.01
 line_break = "\n" + "".join(["*" for i in range(100)]) + "\n"
 
 
@@ -109,13 +111,13 @@ def voronoi_bounded(points, bounding_box):
     # Mirror points
     points_center = points[i, :]
     points_left = np.copy(points_center)
-    points_left[:, 0] = bounding_box[0] - (points_left[:, 0] - bounding_box[0])
+    points_left[:, 0] = bounding_box[0] - (points_left[:, 0] - bounding_box[0] + eps)
     points_right = np.copy(points_center)
-    points_right[:, 0] = bounding_box[1] + (bounding_box[1] - points_right[:, 0])
+    points_right[:, 0] = bounding_box[1] + (bounding_box[1] - points_right[:, 0] + eps)
     points_down = np.copy(points_center)
-    points_down[:, 1] = bounding_box[2] - (points_down[:, 1] - bounding_box[2])
+    points_down[:, 1] = bounding_box[2] - (points_down[:, 1] - bounding_box[2] + eps)
     points_up = np.copy(points_center)
-    points_up[:, 1] = bounding_box[3] + (bounding_box[3] - points_up[:, 1])
+    points_up[:, 1] = bounding_box[3] + (bounding_box[3] - points_up[:, 1] + eps)
     points = np.append(points_center,
                        np.append(np.append(points_left,
                                            points_right,
@@ -233,18 +235,19 @@ def compute_max_var(vor, truth_arr, var_star):
     return argmax_var_t, max_var_t
 
 
-def mfgp_todescato(name, iterations, agents, positions, truth, prior, hyp, plot, log):
+def mfgp_todescato(name, iterations, agents, positions, truth, prior, hyp, plotter, log):
     print(line_break + "MFGP Todescato" + line_break) if log else None
 
     # 1) initialize MFGP model with hyperparameters and empty prior
     model = init_MFGP(hyp, prior=None)
 
-    # 2) initialize arrays of x_star test points, y truth points and bounding box of domain
+    # 2) initialize arrays of x_star test points, y truth points, loss and bounding box of domain
     truth_arr = np.vstack(truth.values.tolist())
     x_star = truth_arr[:, [0, 1]]  # all rows, first two columns are X* gridded test points
     y = truth_arr[:, [0, 1]]  # all rows, third column is ground truth y points
     bounding_box = np.array([np.amin(x_star[:, 0]), np.amax(x_star[:, 0]),
                              np.amin(x_star[:, 1]), np.amax(x_star[:, 1])])  # [x_min, x_max, y_min, y_max]
+    loss = []
 
     # 3) compute max predictive variance and keep as normalizing constant
     mu_star, var_star = model.predict(x_star)
@@ -260,13 +263,14 @@ def mfgp_todescato(name, iterations, agents, positions, truth, prior, hyp, plot,
     max_var_t = np.amax(var_star) * np.ones((agents, 1))
     prob_explore_t = max_var_t / max_var_0 * np.ones((agents, 1))
     explore_t = np.zeros((agents, 1))   # initialize to zero so agents do not sample on first iteration
-    centroids_t = positions # initialize centroids governing Lloyd iterations to current positions
+    centroids_t = positions     # initialize centroids governing Lloyd iterations to current positions
 
     # 6) begin iterative portion of algorithm
     for iteration in range(iterations):
         print(f"\nIteration {iteration}") if log else None
 
         # 7) record samples from each agent on explore step (Todescato "Listen")
+        #plotter.plot_positions(positions) if plotter else None
         x_new = np.empty([0, 2])
         y_new = np.empty([0, 1])
         for i in range(agents):
@@ -287,14 +291,16 @@ def mfgp_todescato(name, iterations, agents, positions, truth, prior, hyp, plot,
 
         # 9) compute loss given current positions
         loss_vor = voronoi_bounded(positions, bounding_box)
-        plot_voronoi(loss_vor, bounding_box) if plot else None
+        plotter.plot_loss_vor(loss_vor, truth_arr) if plotter else None
         loss_t = compute_loss(loss_vor, truth_arr)
+        loss.append(loss_t)
+        plotter.plot_loss(loss) if plotter else None
         print(f"Current loss: {loss_t}") if log else None
 
         # 10) update partitions and centroids (Todescato "Partition and centroids update")
         lloyd_vor = voronoi_bounded(centroids_t, bounding_box)
-        plot_voronoi(lloyd_vor, bounding_box) if plot else None
         centroids_t = compute_centroids(lloyd_vor, truth_arr)
+        plotter.plot_lloyd_vor(lloyd_vor, centroids_t, truth_arr) if plotter else None
 
         # 11) compute points of max variance and make explore/exploit decision (Todescato "Target-Points computation")
         argmax_var_t, max_var_t = compute_max_var(lloyd_vor, truth_arr, var_star)
@@ -305,7 +311,10 @@ def mfgp_todescato(name, iterations, agents, positions, truth, prior, hyp, plot,
         print(f"Probability of exploration: {prob_explore_t.flatten()}") if log else None
         print(f"Decision of exploration: {explore_t.flatten()}") if log else None
 
-        # 12) update agent positions (Todescato "Target-Points transmission")
+        # 12) show plot for this iteration
+        plotter.show() if plotter else None
+
+        # 13) update agent positions (Todescato "Target-Points transmission")
         for i in range(agents):
             if explore_t[i] == 1:
                 positions[i, :] = argmax_var_t[i, :]
@@ -317,14 +326,15 @@ if __name__ == "__main__":
 
     name = "ex"
     agents = 4
-    iterations = 100
+    iterations = 5
     simulations = 1
-    plot = False
     log = True
 
     truth = pd.read_csv(name + "_truth.csv")
     hyp = pd.read_csv(name + "_hyp.csv")
     prior = pd.read_csv(name + "_prior.csv")
+
+    plotter = Plotter([-0.1, 1.1, -0.1, 1.1])   # x_min, x_max, y_min, y_max
 
     for sim_num in range(simulations):
         print(line_break + f"Simulation {sim_num}" + line_break)
@@ -333,5 +343,6 @@ if __name__ == "__main__":
         y_positions = [random.random() for i in range(agents)]
         positions = np.column_stack((x_positions, y_positions))
 
-        mfgp_todescato(name, iterations, agents, positions, truth, prior, hyp, plot, log)
+        cProfile.runctx('mfgp_todescato(name, iterations, agents, positions, truth, prior, hyp, plotter, log)', \
+                        globals(), locals())
 

@@ -9,7 +9,7 @@ from matplotlib import path
 from gaussian_process import MFGP, SFGP
 from plotter import Plotter
 
-eps = 0.01
+eps = 0.1
 line_break = "\n" + "".join(["*" for i in range(100)]) + "\n"
 
 
@@ -270,7 +270,7 @@ def mfgp_todescato(name, iterations, agents, positions, truth, prior, hyp, plott
         print(f"\nIteration {iteration}") if log else None
 
         # 7) record samples from each agent on explore step (Todescato "Listen")
-        #plotter.plot_positions(positions) if plotter else None
+        plotter.plot_explore(prob_explore_t, explore_t) if plotter else None
         x_new = np.empty([0, 2])
         y_new = np.empty([0, 1])
         for i in range(agents):
@@ -288,10 +288,12 @@ def mfgp_todescato(name, iterations, agents, positions, truth, prior, hyp, plott
         # 8) update GP model and estimates (Todescato "Estimate update")
         model.updt_hifi(x_new, y_new)
         mu_star, var_star = model.predict(x_star)
+        plotter.plot_mean(x_star, mu_star) if plotter else None
+        plotter.plot_var(x_star, var_star) if plotter else None
 
         # 9) compute loss given current positions
         loss_vor = voronoi_bounded(positions, bounding_box)
-        plotter.plot_loss_vor(loss_vor, truth_arr) if plotter else None
+        plotter.plot_loss_vor(loss_vor, truth_arr, explore_t) if plotter else None
         loss_t = compute_loss(loss_vor, truth_arr)
         loss.append(loss_t)
         plotter.plot_loss(loss) if plotter else None
@@ -326,7 +328,7 @@ if __name__ == "__main__":
 
     name = "ex"
     agents = 4
-    iterations = 5
+    iterations = 50
     simulations = 1
     log = True
 
@@ -343,6 +345,7 @@ if __name__ == "__main__":
         y_positions = [random.random() for i in range(agents)]
         positions = np.column_stack((x_positions, y_positions))
 
-        cProfile.runctx('mfgp_todescato(name, iterations, agents, positions, truth, prior, hyp, plotter, log)', \
-                        globals(), locals())
+        mfgp_todescato(name, iterations, agents, positions, truth, prior, hyp, plotter, log)
+        # cProfile.runctx('mfgp_todescato(name, iterations, agents, positions, truth, prior, hyp, plotter, log)', \
+        #                 globals(), locals())
 

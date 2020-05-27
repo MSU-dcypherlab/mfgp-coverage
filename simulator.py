@@ -3,7 +3,7 @@ import random
 import cProfile
 import numpy as np
 import pandas as pd
-from scipy.spatial import Voronoi, voronoi_plot_2d
+from scipy.spatial import Voronoi
 import matplotlib.pyplot as plt
 from matplotlib import path
 from gaussian_process import MFGP, SFGP
@@ -234,9 +234,13 @@ def compute_max_var(vor, truth_arr, var_star):
 
     return argmax_var_t, max_var_t
 
+def mfgp_todescato(sim_num, iterations, agents, positions, truth, prior, hyp, console, plotter, log):
 
-def mfgp_todescato(name, iterations, agents, positions, truth, prior, hyp, plotter, log):
-    print(line_break + "MFGP Todescato" + line_break) if log else None
+    print(line_break + "MFGP Todescato" + line_break) if console else None
+
+    # 0) Initialize logging dict-lists
+    if log:
+        loss_log, agent_log, gp_log = [], [], []
 
     # 1) initialize MFGP model with hyperparameters and empty prior
     model = init_MFGP(hyp, prior=None)
@@ -252,7 +256,7 @@ def mfgp_todescato(name, iterations, agents, positions, truth, prior, hyp, plott
     # 3) compute max predictive variance and keep as normalizing constant
     mu_star, var_star = model.predict(x_star)
     max_var_0 = np.amax(var_star)
-    print("Max Initial Predictive Variance: " + str(max_var_0)) if log else None
+    print("Max Initial Predictive Variance: " + str(max_var_0)) if console else None
 
     # 4) initialize MFGP model with prior and force-update model
     model = init_MFGP(hyp, prior=prior)
@@ -267,10 +271,8 @@ def mfgp_todescato(name, iterations, agents, positions, truth, prior, hyp, plott
 
     # 6) begin iterative portion of algorithm
     for iteration in range(iterations):
-        print(f"\nIteration {iteration}") if log else None
 
         # 7) record samples from each agent on explore step (Todescato "Listen")
-        plotter.plot_explore(prob_explore_t, explore_t) if plotter else None
         x_new = np.empty([0, 2])
         y_new = np.empty([0, 1])
         for i in range(agents):
@@ -279,64 +281,87 @@ def mfgp_todescato(name, iterations, agents, positions, truth, prior, hyp, plott
                 x_sample = positions[i, :]
                 sample_idx = np.logical_and(truth_arr[:, 0] == x_sample[0], truth_arr[:, 1] == x_sample[1])
                 y_sample = truth_arr[sample_idx, 2]  # retrieve f_val at matching point
-                print(f"Robot {i} explored {x_sample} and sampled {y_sample}") if log else None
+                print(f"Robot {i} explored {x_sample} and sampled {y_sample}") if console else None
                 x_new = np.vstack((x_new, x_sample))
                 y_new = np.vstack((y_new, y_sample))
-            else:
-                print(f"Robot {i} exploited to {centroids_t[i, :]}") if log else None
+            elif iteration > 0:     # 0th iteration is for initialization purposes only
+                print(f"Robot {i} exploited to {centroids_t[i, :]}") if console else None
 
         # 8) update GP model and estimates (Todescato "Estimate update")
         model.updt_hifi(x_new, y_new)
         mu_star, var_star = model.predict(x_star)
-        plotter.plot_mean(x_star, mu_star) if plotter else None
-        plotter.plot_var(x_star, var_star) if plotter else None
 
         # 9) compute loss given current positions
         loss_vor = voronoi_bounded(positions, bounding_box)
-        plotter.plot_loss_vor(loss_vor, truth_arr, explore_t) if plotter else None
         loss_t = compute_loss(loss_vor, truth_arr)
         loss.append(loss_t)
-        plotter.plot_loss(loss) if plotter else None
-        print(f"Current loss: {loss_t}") if log else None
 
         # 10) update partitions and centroids (Todescato "Partition and centroids update")
         lloyd_vor = voronoi_bounded(centroids_t, bounding_box)
         centroids_t = compute_centroids(lloyd_vor, truth_arr)
-        plotter.plot_lloyd_vor(lloyd_vor, centroids_t, truth_arr) if plotter else None
 
         # 11) compute points of max variance and make explore/exploit decision (Todescato "Target-Points computation")
         argmax_var_t, max_var_t = compute_max_var(lloyd_vor, truth_arr, var_star)
         prob_explore_t = max_var_t / max_var_0
         explore_t = np.array([random.random() < cutoff for cutoff in prob_explore_t])    # Bernoulli wrt prob_explore_t
-        print(f"Max var by cell: {max_var_t.flatten()}") if log else None
-        print(f"Normalizing max var: {max_var_0}") if log else None
-        print(f"Probability of exploration: {prob_explore_t.flatten()}") if log else None
-        print(f"Decision of exploration: {explore_t.flatten()}") if log else None
 
-        # 12) show plot for this iteration
-        plotter.show() if plotter else None
+        # 12) print to console, update log, and plot for this iteration
+        if console:
+            print(f"\nIteration {iteration}")
+            print(f"Current loss: {loss_t}")
+            print(f"Max var by cell: {max_var_t.flatten()}")
+            print(f"Normalizing max var: {max_var_0}")
+            print(f"Probability of exploration: {prob_explore_t.flatten()}")
+            print(f"Decision of exploration: {explore_t.flatten()}")
+        if log:
+            loss_log.append({"SimNum": sim_num, "Iteration": iteration, "Loss": loss_t})
+            var = np.diag(var_star)
+            # for i in range(x_star.shape[0]):
+            #     gp_log.append({"SimNum": sim_num, "Iteration": iteration,
+            #                    "X": x_star[i, 0], "Y": x_star[i, 1],
+            #                    "Mu": mu_star[i, 0], "Var": var[i]})
+            for i in range(agents):
+                agent_log.append({"SimNum": sim_num, "Iteration": iteration, "Agent": i,
+                                  "X": positions[i, 0], "Y": positions[i, 1],
+                                  "XMax": argmax_var_t[i, 0], "YMax": positions[i, 1],
+                                  "VarMax": max_var_t[i, 0], "Var0": max_var_0,
+                                  "XCentroid": centroids_t[i, 0], "YCentroid": centroids_t[i, 1],
+                                  "ProbExplore": prob_explore_t[i, 0], "Explore": explore_t[i, 0]})
+        if plotter:
+            plotter.plot_explore(prob_explore_t, explore_t)
+            plotter.plot_mean(x_star, mu_star)
+            plotter.plot_var(x_star, var_star)
+            plotter.plot_loss_vor(loss_vor, truth_arr, explore_t)
+            plotter.plot_loss(loss)
+            plotter.plot_lloyd_vor(lloyd_vor, centroids_t, truth_arr)
+            plotter.show()
 
         # 13) update agent positions (Todescato "Target-Points transmission")
         for i in range(agents):
-            if explore_t[i] == 1:
+            if explore_t[i, 0]:
                 positions[i, :] = argmax_var_t[i, :]
             else:
                 positions[i, :] = centroids_t[i, :]
+
+    # 14) return log dictionary lists to driver function, which will save them into a dataframe
+    return loss_log, agent_log, gp_log
 
 
 if __name__ == "__main__":
 
     name = "ex"
     agents = 4
-    iterations = 50
+    iterations = 5
     simulations = 1
+    console = True
+    plotter = Plotter([-0.1, 1.1, -0.1, 1.1])   # x_min, x_max, y_min, y_max
     log = True
 
     truth = pd.read_csv(name + "_truth.csv")
     hyp = pd.read_csv(name + "_hyp.csv")
     prior = pd.read_csv(name + "_prior.csv")
 
-    plotter = Plotter([-0.1, 1.1, -0.1, 1.1])   # x_min, x_max, y_min, y_max
+    loss_log, agent_log, gp_log = [], [], []
 
     for sim_num in range(simulations):
         print(line_break + f"Simulation {sim_num}" + line_break)
@@ -345,7 +370,19 @@ if __name__ == "__main__":
         y_positions = [random.random() for i in range(agents)]
         positions = np.column_stack((x_positions, y_positions))
 
-        mfgp_todescato(name, iterations, agents, positions, truth, prior, hyp, plotter, log)
-        # cProfile.runctx('mfgp_todescato(name, iterations, agents, positions, truth, prior, hyp, plotter, log)', \
-        #                 globals(), locals())
+        cProfile.runctx(
+            'mfgp_todescato(sim_num, iterations, agents, positions, truth, prior, hyp, console, plotter, log)',
+            globals(), locals())
+        # loss_log_t, agent_log_t, gp_log_t =\
+        #     mfgp_todescato(sim_num, iterations, agents, positions, truth, prior, hyp, console, plotter, log)
+        # loss_log.extend(loss_log_t)
+        # agent_log.extend(agent_log_t)
+        # gp_log.extend(gp_log_t)
 
+    # save dataframes from simulation results
+    # loss_df = pd.DataFrame(loss_log)
+    # loss_df.to_csv(name + "_loss.csv")
+    # agent_df = pd.DataFrame(agent_log)
+    # agent_df.to_csv(name + "_agent.csv")
+    # gp_df = pd.DataFrame(gp_log)
+    # gp_df.to_csv(name + "_gp.csv")

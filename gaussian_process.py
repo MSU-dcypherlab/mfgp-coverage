@@ -43,9 +43,8 @@ class SFGP:
 
     # A simple vectorized rbf kernel
     def kernel(self, x, xp, hyp):
-        output_scale = np.exp(hyp[0])
-        lengthscales = np.exp(hyp[1])
-        print(lengthscales)
+        output_scale = np.exp(hyp[1])
+        lengthscales = np.exp(hyp[2])
         diffs = np.expand_dims(x / lengthscales, 1) - \
                 np.expand_dims(xp / lengthscales, 0)
         return output_scale * np.exp(-0.5 * np.sum(diffs ** 2, axis=2))
@@ -149,6 +148,31 @@ class SFGP:
     def callback(self, params):
         print("Log likelihood {}".format(self.likelihood(params)))
 
+    def updt_info(self, X_new, y_new):
+        self.X = X_new
+        X = X_new
+
+        self.y = y_new
+        y = y_new
+
+        hyp = self.hyp
+
+        N = y.shape[0]
+
+        logsigma_n = hyp[-1]
+        sigma_n = np.exp(logsigma_n)
+
+        theta = hyp[self.idx_theta]
+
+        K = self.kernel(X, X, theta) + np.eye(N) * sigma_n
+        L = np.linalg.cholesky(K + np.eye(N) * self.jitter)
+        self.L = L
+
+    def updt(self, X_addition, y_addition):
+        self.X = np.vstack((self.X, X_addition))
+        self.y = np.vstack((self.y, y_addition))
+        self.updt_info(self.X, self.y)
+
 
 class MFGP:
     """
@@ -193,7 +217,6 @@ class MFGP:
     def kernel(self, x, xp, hyp):
         output_scale = np.exp(hyp[1])
         lengthscales = np.exp(hyp[2])
-        # lengthscales = 14.58
         diffs = np.expand_dims(x / lengthscales, 1) - \
                 np.expand_dims(xp / lengthscales, 0)
         return output_scale * np.exp(-0.5 * np.sum(diffs ** 2, axis=2))

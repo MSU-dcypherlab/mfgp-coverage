@@ -485,10 +485,10 @@ if __name__ == "__main__":
 
     name = "sf_fc_false"
     agents = 4
-    iterations = 10
-    simulations = 1
+    iterations = 100
+    simulations = 10
     console = True
-    plotter = Plotter([-0.1, 1.1, -0.1, 1.1])   # x_min, x_max, y_min, y_max
+    plotter = None #Plotter([-0.1, 1.1, -0.1, 1.1])   # x_min, x_max, y_min, y_max
     log = True
 
     truth = pd.read_csv(name + "_truth.csv")

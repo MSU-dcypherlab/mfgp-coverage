@@ -105,10 +105,10 @@ def in_box(points, bounding_box):
     :param bounding_box: 
     :return: 
     """
-    return np.logical_and(np.logical_and(bounding_box[0] <= points[:, 0],
-                                         points[:, 0] <= bounding_box[1]),
-                          np.logical_and(bounding_box[2] <= points[:, 1],
-                                         points[:, 1] <= bounding_box[3]))
+    return np.logical_and(np.logical_and(bounding_box[0] - eps <= points[:, 0],
+                                         points[:, 0] <= bounding_box[1] + eps),
+                          np.logical_and(bounding_box[2] - eps <= points[:, 1],
+                                         points[:, 1] <= bounding_box[3] + eps))
 
 
 def voronoi_bounded(points, bounding_box):
@@ -211,11 +211,12 @@ def compute_centroids(vor, x_star, mu_star):
         centroid = weighted_integral / f_integral   # mean 1x2 weighted location of cell
         centroids = np.vstack((centroids, centroid))
 
-        # plt.scatter(in_points[:, 0], in_points[:, 1], c=in_points[:, 2])
-        # plt.plot(centroid[0], centroid[1], 'k+')
-        # plt.xlim((-0.1, 1.1))
-        # plt.ylim((-0.1, 1.1))
-        # plt.show()
+        plt.figure()
+        plt.scatter(in_points[:, 0], in_points[:, 1], c=in_means[:, 0])
+        plt.plot(centroid[0], centroid[1], 'k+')
+        plt.xlim((-0.1, 1.1))
+        plt.ylim((-0.1, 1.1))
+        plt.show()
 
     return centroids
 
@@ -483,7 +484,7 @@ def mfgp_todescato(sim_num, iterations, agents, positions, truth, prior, hyp, co
 
 if __name__ == "__main__":
 
-    name = "sf_fc_false"
+    name = "Data/sf_fc_false"
     agents = 4
     iterations = 100
     simulations = 10
@@ -500,8 +501,8 @@ if __name__ == "__main__":
     for sim_num in range(simulations):
         print(line_break + f"Simulation {sim_num}" + line_break)
 
-        x_positions = [random.random() for i in range(agents)]
-        y_positions = [random.random() for i in range(agents)]
+        x_positions = [.83, .80, .65, .06]#[random.random() for i in range(agents)]
+        y_positions = [.93, .81, .81, .37]#[random.random() for i in range(agents)]
         positions = np.column_stack((x_positions, y_positions))
 
         loss_log_t, agent_log_t, sample_log_t, gp_log_t = \

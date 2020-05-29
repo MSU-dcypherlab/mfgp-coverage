@@ -6,4 +6,7 @@
 __pycache__/
 venv/
 
+# ignore real world data for now
+Kaggle/
+
 

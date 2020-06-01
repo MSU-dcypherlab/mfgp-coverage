@@ -7,8 +7,8 @@ Created on Sat May 20 20:56:05 2017
 Retrived from https://github.com/paraklas/GPTutorial on May 22, 2020 by Andrew McDonald
 """
 from __future__ import division
-import numpy as np
 from autograd import value_and_grad
+import autograd.numpy as np
 from scipy.optimize import minimize
 from scipy.stats import norm
 from scipy.optimize import differential_evolution
@@ -223,7 +223,6 @@ class MFGP:
 
     # Computes the negative log-marginal likelihood
     def likelihood(self, hyp):
-        # hyp = np.exp(self.hyp)
         rho = np.exp(hyp[-3])
         sigma_n_L = np.exp(hyp[-2])
         sigma_n_H = np.exp(hyp[-1])

@@ -28,7 +28,7 @@ def init_MFGP(hyp, prior):
     model = MFGP(X_L, y_L, X_H, y_H, len_L, len_H)
 
     h_arr = np.array(hyp.values.tolist()[0])  # convert hyperparameters from dataframe to list
-    model.hyp = h_arr   # convert hyperparameters from list to ndarray
+    model.hyp = h_arr
 
     return model
 
@@ -45,7 +45,7 @@ def init_SFGP(hyp, prior):
     model = SFGP(X, y, len)
 
     h_arr = np.array(hyp.values.tolist()[0])  # convert hyperparameters from dataframe to list
-    model.hyp = h_arr  # convert hyperparameters from list to ndarray
+    model.hyp = h_arr
 
     return model
 
@@ -209,14 +209,25 @@ def compute_centroids(vor, x_star, mu_star):
         weighted_points = np.multiply(weights, in_points[:, [0, 1]])   # (x,y) weighted by f elementwise
         weighted_integral = np.mean(weighted_points, axis=0) * cell_area    # discretized 1x2 integral of (x*f, y*f)
         centroid = weighted_integral / f_integral   # mean 1x2 weighted location of cell
+
+        # 4) sanity check: if centroid is out of domain, snap it back inside domain
+        if centroid[0] < np.amin(x_star[:, 0]):     # check x lower bound
+            centroid[0] = np.amin(x_star[:, 0])
+        if centroid[0] > np.amax(x_star[:, 0]):     # check x upper bound
+            centroid[0] = np.amax(x_star[:, 0])
+        if centroid[1] < np.amin(x_star[:, 1]):     # check y lower bound
+            centroid[1] = np.amin(x_star[:, 1])
+        if centroid[1] > np.amax(x_star[:, 1]):     # check y lower bound
+            centroid[1] = np.amax(x_star[:, 1])
+
         centroids = np.vstack((centroids, centroid))
 
-        plt.figure()
-        plt.scatter(in_points[:, 0], in_points[:, 1], c=in_means[:, 0])
-        plt.plot(centroid[0], centroid[1], 'k+')
-        plt.xlim((-0.1, 1.1))
-        plt.ylim((-0.1, 1.1))
-        plt.show()
+        # plt.figure()
+        # plt.scatter(in_points[:, 0], in_points[:, 1], c=in_means[:, 0])
+        # plt.plot(centroid[0], centroid[1], 'k+')
+        # plt.xlim((-0.1, 1.1))
+        # plt.ylim((-0.1, 1.1))
+        # plt.show()
 
     return centroids
 
@@ -236,7 +247,7 @@ def compute_max_var(vor, truth_arr, var_star):
 
         # 3) find max, argmax of var in this cell and save
         max_var = np.amax(in_var)
-        argmax_var = in_points[in_var == max_var, :][0, [0, 1]]    # pick first of multiple argmax's and take (x,y) only
+        argmax_var = in_points[np.argmax(in_var), [0, 1]]    # take (x,y) only
         argmax_var_t = np.vstack((argmax_var_t, argmax_var))
         max_var_t = np.vstack((max_var_t, max_var))
 
@@ -252,9 +263,9 @@ def sfgp_todescato(sim_num, iterations, agents, positions, truth, prior, hyp, co
 
     print(line_break + "SFGP Todescato" + line_break) if console else None
 
-    # 0) Initialize logging dict-lists
-    if log:
-        loss_log, agent_log, sample_log, gp_log = [], [], [], []
+    # 0) Initialize logging lists and plotter
+    loss_log, agent_log, sample_log, gp_log = [], [], [], [] if log else None
+    plotter.reset() if plotter else None
 
     # 1) initialize SFGP model with hyperparameters and empty prior
     model = init_SFGP(hyp, prior=None)
@@ -262,7 +273,7 @@ def sfgp_todescato(sim_num, iterations, agents, positions, truth, prior, hyp, co
     # 2) initialize arrays of x_star test points, y truth points, loss and bounding box of domain
     truth_arr = np.vstack(truth.values.tolist())
     x_star = truth_arr[:, [0, 1]]  # all rows, first two columns are X* gridded test points
-    y = truth_arr[:, [0, 1]]  # all rows, third column is ground truth y points
+    y = truth_arr[:, [2]]  # all rows, third column is ground truth y points
     bounding_box = np.array([np.amin(x_star[:, 0]), np.amax(x_star[:, 0]),
                              np.amin(x_star[:, 1]), np.amax(x_star[:, 1])])  # [x_min, x_max, y_min, y_max]
     loss = []
@@ -368,9 +379,9 @@ def mfgp_todescato(sim_num, iterations, agents, positions, truth, prior, hyp, co
 
     print(line_break + "MFGP Todescato" + line_break) if console else None
 
-    # 0) Initialize logging dict-lists
-    if log:
-        loss_log, agent_log, sample_log, gp_log = [], [], [], []
+    # 0) Initialize logging lists and plotter
+    loss_log, agent_log, sample_log, gp_log = [], [], [], [] if log else None
+    plotter.reset() if plotter else None
 
     # 1) initialize MFGP model with hyperparameters and empty prior
     model = init_MFGP(hyp, prior=None)
@@ -378,7 +389,7 @@ def mfgp_todescato(sim_num, iterations, agents, positions, truth, prior, hyp, co
     # 2) initialize arrays of x_star test points, y truth points, loss and bounding box of domain
     truth_arr = np.vstack(truth.values.tolist())
     x_star = truth_arr[:, [0, 1]]  # all rows, first two columns are X* gridded test points
-    y = truth_arr[:, [0, 1]]  # all rows, third column is ground truth y points
+    y = truth_arr[:, [2]]  # all rows, third column is ground truth y points
     bounding_box = np.array([np.amin(x_star[:, 0]), np.amax(x_star[:, 0]),
                              np.amin(x_star[:, 1]), np.amax(x_star[:, 1])])  # [x_min, x_max, y_min, y_max]
     loss = []
@@ -402,6 +413,11 @@ def mfgp_todescato(sim_num, iterations, agents, positions, truth, prior, hyp, co
 
     # 6) begin iterative portion of algorithm
     for iteration in range(iterations):
+
+        # ensure all positions are valid: if not, break and investigate
+        if not in_box(positions, bounding_box).all():
+            print("Warning: out of bounds")
+
 
         # 7) record samples from each agent on explore step (Todescato "Listen")
         x_new = np.empty([0, 2])    # store new sample points
@@ -429,8 +445,12 @@ def mfgp_todescato(sim_num, iterations, agents, positions, truth, prior, hyp, co
         loss.append(loss_t)
 
         # 10) update partitions and centroids given current estimate (Todescato "Partition and centroids update")
+        if centroids_t.shape[0] != agents:
+            print("Error")
         lloyd_vor = voronoi_bounded(centroids_t, bounding_box)
         centroids_t = compute_centroids(lloyd_vor, x_star, mu_star)
+        if centroids_t.shape[0] != agents:
+            print("Error")
 
         # 11) compute points of max variance and make explore/exploit decision (Todescato "Target-Points computation")
         argmax_var_t, max_var_t = compute_max_var(lloyd_vor, truth_arr, var_star)
@@ -484,16 +504,20 @@ def mfgp_todescato(sim_num, iterations, agents, positions, truth, prior, hyp, co
 
 if __name__ == "__main__":
 
-    name = "Data/sf_fc_false"
+    name = "Data/two_corners"
+    out_name = "Data/two_corners_sf"
+
     agents = 4
-    iterations = 100
+    iterations = 50
     simulations = 10
     console = True
-    plotter = None #Plotter([-0.1, 1.1, -0.1, 1.1])   # x_min, x_max, y_min, y_max
+    plotter = None  # Plotter([-0.1, 1.1, -0.1, 1.1])   # x_min, x_max, y_min, y_max
     log = True
+    np.random.seed(1234)
 
-    truth = pd.read_csv(name + "_truth.csv")
-    hyp = pd.read_csv(name + "_hyp.csv")
+    truth = pd.read_csv(name + "_hifi.csv")
+    mf_hyp = pd.read_csv(name + "_mf_hyp.csv")
+    sf_hyp = pd.read_csv(name + "_sf_hyp.csv")
     prior = pd.read_csv(name + "_prior.csv")
 
     loss_log, agent_log, sample_log, gp_log = [], [], [], []
@@ -501,13 +525,14 @@ if __name__ == "__main__":
     for sim_num in range(simulations):
         print(line_break + f"Simulation {sim_num}" + line_break)
 
-        x_positions = [.83, .80, .65, .06]#[random.random() for i in range(agents)]
-        y_positions = [.93, .81, .81, .37]#[random.random() for i in range(agents)]
+        x_positions = [random.random() for i in range(agents)]
+        y_positions = [random.random() for i in range(agents)]
         positions = np.column_stack((x_positions, y_positions))
 
         loss_log_t, agent_log_t, sample_log_t, gp_log_t = \
-            sfgp_todescato(sim_num, iterations, agents, positions, truth, prior, hyp, console, plotter, log)
-            # mfgp_todescato(sim_num, iterations, agents, positions, truth, prior, hyp, console, plotter, log)
+            sfgp_todescato(sim_num, iterations, agents, positions, truth, prior, sf_hyp, console, plotter, log)
+            # mfgp_todescato(sim_num, iterations, agents, positions, truth, prior, mf_hyp, console, plotter, log)
+            # sfgp_todescato(sim_num, iterations, agents, positions, truth, prior, sf_hyp, console, plotter, log)
         loss_log.extend(loss_log_t)
         agent_log.extend(agent_log_t)
         sample_log.extend(sample_log_t)
@@ -515,10 +540,10 @@ if __name__ == "__main__":
 
     # save dataframes from simulation results
     loss_df = pd.DataFrame(loss_log)
-    loss_df.to_csv(name + "_loss.csv")
+    loss_df.to_csv(out_name + "_loss.csv")
     agent_df = pd.DataFrame(agent_log)
-    agent_df.to_csv(name + "_agent.csv")
+    agent_df.to_csv(out_name + "_agent.csv")
     sample_df = pd.DataFrame(sample_log)
-    sample_df.to_csv(name + "_sample.csv")
+    sample_df.to_csv(out_name + "_sample.csv")
     # gp_df = pd.DataFrame(gp_log)
     # gp_df.to_csv(name + "_gp.csv")

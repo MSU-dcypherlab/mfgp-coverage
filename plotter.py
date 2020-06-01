@@ -125,6 +125,9 @@ class Plotter:
         self.ExpAx.bar(x=range(prob_explore.size), height=prob_explore[:, 0])
         self.ExpAx.scatter(x=range(explore.size), y=explore[:, 0], c=color)
 
-
     def show(self):
         self.Fig.show()
+
+    def reset(self):
+        self.Iteration = 0
+        self.Iterations = [0]

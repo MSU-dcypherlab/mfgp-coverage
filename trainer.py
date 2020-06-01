@@ -1,14 +1,15 @@
 import numpy as np
+import pandas as pd
 from gaussian_process import MFGP, SFGP
 
 def train_sfgp(name):
     # 1) load training data
-    sifi = np.loadtxt("Data/" + name + "_sifi_train.csv", skiprows=1, delimiter=',')
+    sifi = np.loadtxt("Data/" + name + "_hifi_train.csv", skiprows=1, delimiter=',')    # train from hifi sample data
     labels = ['mu_sf', 's^2_sf', 'L_sf', 'noise_sf']
 
     # 2) reshape training data from CSV to valid format
-    X = sifi[:, 1:3].reshape(-1, 2)  # columns 1 and 2 are (x,y) points (0 is index)
-    y = sifi[:, 3].reshape(-1, 1)  # column 3 is f(x,y)
+    X = sifi[:, [0, 1]].reshape(-1, 2)  # columns 0 and 1 are (x,y) points
+    y = sifi[:, [2]].reshape(-1, 1)  # column 2 is f(x,y)
 
     # 3) initialize model
     len_sf = 0.1
@@ -23,7 +24,10 @@ def train_sfgp(name):
     # 5) save hyperparameters if training was a success
     valid = input("Save single-fidelity hyperparameters?")
     if valid.lower() == "y":
-        np.savetxt("Data/" + name + "_sf_hyp.csv", model.hyp, delimiter=',')
+        hyp = model.hyp.reshape(1, -1)
+        hyp_df = pd.DataFrame(hyp)
+        hyp_df.columns = labels
+        hyp_df.to_csv("Data/" + name + "_sf_hyp.csv", index=False)
 
 
 def train_mfgp(name):
@@ -33,14 +37,14 @@ def train_mfgp(name):
     labels = ['mu_lo', 's^2_lo', 'L_lo', 'mu_hi', 's^2_hi', 'L_hi', 'rho', 'noise_lo', 'noise_hi']
 
     # 2) reshape training data from CSV to valid format
-    X_L = lofi[:, 1:3].reshape(-1, 2)  # columns 1 and 2 are (x,y) points (0 is index)
-    y_L = lofi[:, 3].reshape(-1, 1)  # column 3 is f(x,y)
-    X_H = hifi[:, 1:3].reshape(-1, 2)
-    y_H = hifi[:, 3].reshape(-1, 1)
+    X_L = lofi[:, [0, 1]].reshape(-1, 2)  # columns 0, 1 are (x,y) points
+    y_L = lofi[:, 2].reshape(-1, 1)  # column 2 is f(x,y)
+    X_H = hifi[:, [0, 1]].reshape(-1, 2)
+    y_H = hifi[:, 2].reshape(-1, 1)
 
     # 3) initialize model
-    len_L = 0.2
-    len_H = 0.1
+    len_L = 0.4
+    len_H = 0.05
     model = MFGP(X_L, y_L, X_H, y_H, len_L, len_H)
 
     # 4) train model and display results
@@ -52,11 +56,14 @@ def train_mfgp(name):
     # 5) save hyperparameters if training was a success
     valid = input("Save multi-fidelity hyperparameters?")
     if valid.lower() == "y":
-        np.savetxt("Data/" + name + "_mf_hyp.csv", model.hyp, delimiter=',')
+        hyp = model.hyp.reshape(1, -1)
+        hyp_df = pd.DataFrame(hyp)
+        hyp_df.columns = labels
+        hyp_df.to_csv("Data/" + name + "_mf_hyp.csv", index=False)
 
 
 if __name__ == "__main__":
 
     np.random.seed(1234)
-    name = "diag"
+    name = "two_corners"
     train_mfgp(name)

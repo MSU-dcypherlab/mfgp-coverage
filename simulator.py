@@ -14,7 +14,7 @@ line_break = "\n" + "".join(["*" for i in range(100)]) + "\n"
 
 
 def init_MFGP(hyp, prior):
-    if prior is not None:
+    if prior is not None and len(prior) > 0:
         p = np.vstack(prior.values.tolist())
         X_L = np.reshape(p[:, [0, 1]], (-1,2))  # all rows, first two columns are X,Y of lofi prior
         y_L = np.reshape(p[:, 2], (-1,1))  # all rows, third column is F of lofi prior
@@ -34,15 +34,15 @@ def init_MFGP(hyp, prior):
 
 
 def init_SFGP(hyp, prior):
-    if prior is not None:
+    if prior is not None and len(prior) > 0:
         p = np.vstack(prior.values.tolist())
         X = np.reshape(p[:, [0, 1]], (-1, 2))  # all rows, first two columns are X,Y of lofi prior
         y = np.reshape(p[:, 2], (-1, 1))  # all rows, third column is F of lofi prior
     else:
         X = np.empty([0, 2])
         y = np.empty([0, 1])
-    len = 1
-    model = SFGP(X, y, len)
+    len_sf = 1
+    model = SFGP(X, y, len_sf)
 
     h_arr = np.array(hyp.values.tolist()[0])  # convert hyperparameters from dataframe to list
     model.hyp = h_arr
@@ -511,13 +511,14 @@ if __name__ == "__main__":
     iterations = 50
     simulations = 10
     console = True
-    plotter = None  # Plotter([-0.1, 1.1, -0.1, 1.1])   # x_min, x_max, y_min, y_max
+    plotter = Plotter([-0.1, 1.1, -0.1, 1.1])   # x_min, x_max, y_min, y_max
     log = True
     np.random.seed(1234)
 
     truth = pd.read_csv(name + "_hifi.csv")
     mf_hyp = pd.read_csv(name + "_mf_hyp.csv")
     sf_hyp = pd.read_csv(name + "_sf_hyp.csv")
+    # prior = pd.read_csv("Data/null_prior.csv")
     prior = pd.read_csv(name + "_prior.csv")
 
     loss_log, agent_log, sample_log, gp_log = [], [], [], []

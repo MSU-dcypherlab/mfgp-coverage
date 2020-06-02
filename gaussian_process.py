@@ -79,7 +79,8 @@ class SFGP:
     # Return posterior mean and variance at a set of test points
     def predict(self, X_star):
         X = self.X
-        y = self.y
+        mean = self.hyp[0]
+        y = self.y - mean
 
         L = self.L
 
@@ -89,6 +90,7 @@ class SFGP:
 
         alpha = np.linalg.solve(np.transpose(L), np.linalg.solve(L, y))
         pred_u_star = np.matmul(psi, alpha)
+        pred_u_star += mean
 
         beta = np.linalg.solve(np.transpose(L), np.linalg.solve(L, psi.T))
         var_u_star = self.kernel(X_star, X_star, theta) - np.matmul(psi, beta)

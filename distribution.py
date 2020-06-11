@@ -1,16 +1,51 @@
+"""
+distribution.py
+
+Generates 3-dimensional (x, y, z=f(x,y)) distributions normalized to the unit cube [0, 1]^3 used by learning and
+coverage algorithms in multiagent settings. Displays intermediate results of generated distributions using
+matplotlib and saves (x, y, z=f(x,y)) triples to a CSV file
+
+by: Andrew McDonald, D-CYPHER Lab, Michigan State University
+last modified: 6/11/2020
+"""
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-""" Minimum value possible when normalizing function values (to avoid div-by-0 errors """
+""" Minimum value possible when normalizing function values (to avoid div-by-0 errors) """
 epsilon = 0.01
 
+
 def normalize(y):
+    """
+    Normalize the numpy array y between 0 + epsilon and 1. Epsilon lower bound prevents divide by zero errors later
+    in coverage algorithms (points with zero weight lead to numerical errors when computing cell centroids).
+
+    :param y: nx1 numpy array to be normalized
+    :return: normalized nx1 numpy array with values in [epsilon, 1]
+    """
     y = y - np.amin(y) + epsilon
     y = y / np.amax(y)
     return y
 
+
 def exponential(x_star, lenscale, positive_centers, negative_centers):
+    """
+    Generate a 3-dimensional (x, y, z=f(x,y)) distribution by summing exponential bump functions parameterized by
+    lenscale to positive_centers and subtracting from negative_centers. Evaluate this function at all points in x_star.
+    Each exponential bump function is given by
+        f(x, x') = ± exp( -dist(x, x')^2 / lenscale )
+    where x is a 2-dimensional point in the unit square, x' is a base point of positive_centers or negative_centers, and
+    the sign is determined by whether the point is in positive_centers or negative_centers
+
+    :param x_star: nx2 numpy array of (x, y) pairs at which to evaluate distribution function
+    :param lenscale: lengthscale parameter of bump function: greater values correspond to "smoother" functions
+    :param positive_centers: points at which a positive bump function is centered
+    :param negative_centers: points at which a negative bump function is centered
+    :return: normalized nx1 numpy array containing z=f(x,y) where (x,y) are specified by points in x_star and f is
+             parameterized by positive_centers, negative_centers and lenscale
+    """
     y = np.zeros(x_star.shape[0])
 
     if positive_centers:
@@ -28,7 +63,17 @@ def exponential(x_star, lenscale, positive_centers, negative_centers):
 
     return normalize(y)
 
+
 def diag():
+    """
+    Generate a multi-fidelity 3-dimensional (x, y, z=f(x,y)) distribution with high values on bottom-left to top-right
+    diagonal. Verify correlation between two fidelities and visualize distribution with matplotlib. Pull
+    random subsample of generated points and save separately for hyperparameter training. Save high and
+    low fidelity distribution evaluations to CSV files.
+
+    :return: None
+    """
+
     # 1) generate grid
     delta = 0.02
     grid = np.arange(0, 1 + delta, delta)
@@ -124,7 +169,16 @@ def diag():
     plt.show()
     print("Done.")
 
+
 def two_corners():
+    """
+    Generate a multi-fidelity 3-dimensional (x, y, z=f(x,y)) distribution with high values on bottom-left and top-right
+    corners. Verify correlation between two fidelities and visualize distribution with matplotlib. Pull
+    random subsample of generated points and save separately for hyperparameter training. Save high and
+    low fidelity distribution evaluations to CSV files.
+
+    :return: None
+    """
     # 1) generate grid
     delta = 0.02
     grid = np.arange(0, 1 + delta, delta)
@@ -220,5 +274,9 @@ def two_corners():
     plt.show()
     print("Done.")
 
+
 if __name__ == "__main__":
+    """
+    Run selected distribution-generating function.
+    """
     two_corners()

@@ -1,11 +1,17 @@
-#!/usr/bin/env python2
-# -*- coding: utf-8 -*-
 """
-Created on Sat May 20 20:56:05 2017
-@author: Paris
+gaussian_process.py
 
-Retrived from https://github.com/paraklas/GPTutorial on May 22, 2020 by Andrew McDonald
+Implementation of single- and multi-fidelity Gaussian Process learning models capable of hyperparameter
+inference and mean/variance prediction.
+
+created by: Paris Perdikaris, Department of Mechanical Engineer, MIT
+first created: 5/20/2017
+available: https://github.com/paraklas/GPTutorial
+
+modified by: Andrew McDonald, D-CYPHER Lab, Michigan State University
+last modified: 6/11/2020
 """
+
 from __future__ import division
 from autograd import value_and_grad
 import autograd.numpy as np
@@ -14,10 +20,19 @@ from scipy.stats import norm
 from scipy.optimize import differential_evolution
 
 
-# A minimal Gaussian process class
 class SFGP:
-    # Initialize the class
+    """
+    A single fidelity Gaussian Process class capable of hyperparameter inference and mean/variance prediction
+    """
+
     def __init__(self, X, y, len):
+        """
+        Initialize the SFGP class.
+
+        :param X: [nxD numpy array] of observation points (D is number of dimensions of input space)
+        :param y: [nx1 numpy array] of observation values
+        :param len: [scalar] approximate lengthscale of GP (accelerates hyperparameter inference convergence)
+        """
         self.D = X.shape[1]
         self.X = X
         self.y = y
@@ -27,10 +42,14 @@ class SFGP:
         self.jitter = 1e-8
 
         self.likelihood(self.hyp)
-        # print("Total number of parameters: %d" % (self.hyp.shape[0]))
 
-    # Initialize hyper-parameters
     def init_params(self, len):
+        """
+        Initialize hyperparameters of the GP.
+
+        :param len: [scalar] Approximate lengthscale of GP (accelerates hyperparameter inference convergence)
+        :return: [1xk numpy array] of GP hyperparameters as initialized (k is number of hyperparameters)
+        """
         hyp = np.log(np.ones(self.D + 1))
         self.idx_theta = np.arange(hyp.shape[0])
         logsigma_n = np.array([-4.0])
@@ -41,16 +60,28 @@ class SFGP:
 
         return hyp
 
-    # A simple vectorized rbf kernel
     def kernel(self, x, xp, hyp):
+        """
+        Vectorized implementation of a radial basis function kernel.
+        
+        :param x: [nxD numpy array] of points at which to evaluate kernel (D is number of dimensions of input space)
+        :param xp: [nxD numpy array] of points at which to evaluate kernel (D is number of dimensions of input space)
+        :param hyp: [1xk numpy array] of hyperparameters of GP utilized in computation (k is number of hyperparameters)
+        :return: [nxn numpy array] of kernel values between all n^2 pairs of points in (x, xp)
+        """
         output_scale = np.exp(hyp[1])
         lengthscales = np.exp(hyp[2])
         diffs = np.expand_dims(x / lengthscales, 1) - \
                 np.expand_dims(xp / lengthscales, 0)
         return output_scale * np.exp(-0.5 * np.sum(diffs ** 2, axis=2))
 
-    # Computes the negative log-marginal likelihood
     def likelihood(self, hyp):
+        """
+        Compute the negative log-marginal likelihood of model given observations (self.X, self.y) and hyperparameters.
+        
+        :param hyp: [1xk numpy array] of hyperparameters of GP utilized in computation (k is number of hyperparameters)
+        :return: [scalar] negative log-marginal likelihood of model
+        """
         X = self.X
         y = self.y
 
@@ -70,14 +101,29 @@ class SFGP:
                np.sum(np.log(np.diag(L))) + 0.5 * np.log(2. * np.pi) * N
         return NLML[0, 0]
 
-    # Minimizes the negative log-marginal likelihood
     def train(self):
+        """
+        Trains hyperparameters of GP model by minimizing the negative log-marginal likelihood on given data.
+        Prints progress of training at each step.
+        For best training results, use with 100-300 training points. Kernel computations are O(n^2) leading to fast
+        growth, but small training sets may not lead to reliable hyperparameter inference.
+        
+        :return: None
+        """
         result = minimize(value_and_grad(self.likelihood), self.hyp, jac=True,
                           method='L-BFGS-B', callback=self.callback)
         self.hyp = result.x
 
-    # Return posterior mean and variance at a set of test points
     def predict(self, X_star):
+        """
+        Return posterior mean and variance conditioned on provided self.X, self.y data
+        at a set of test points specified in X_star.
+
+        :param X_star: [nxD numpy array] of test points at which to predict (D is number of dimensions of input space)
+        :return: [2-value tuple] of
+            [nx1 numpy array] of mean predictions at points in X_star
+            [nxn numpy array] of covariance prediction of points in X_star (diagonal is variance at points in X_star)
+        """
         X = self.X
         mean = self.hyp[0]
         y = self.y - mean
@@ -98,6 +144,12 @@ class SFGP:
         return pred_u_star, var_u_star
 
     def ExpectedImprovement(self, X_star):
+        """
+        Compute the expected improvement by sampling points in X_star.
+
+        :param X_star: [nxD numpy array] of points at which to compute EI (D is number of dimensions of input space)
+        :return: [nx1 numpy array] of values of expected improvement at each point in X_star
+        """
         X = self.X
         y = self.y
 
@@ -122,12 +174,26 @@ class SFGP:
         return EI_acq
 
     def draw_prior_samples(self, X_star, N_samples=1):
+        """
+        Draw N_samples from prior distribution evaluated at points specified in X_star.
+
+        :param X_star: [nxD numpy array] of points at which to compute prior (D is number of dimensions of input space)
+        :param N_samples: [scalar] number of points to sample from prior evaluated at X_star
+        :return: [nxN_samples numpy array] of prior evaluations at points in X_star
+        """
         N = X_star.shape[0]
         theta = self.hyp[self.idx_theta]
         K = self.kernel(X_star, X_star, theta)
         return np.random.multivariate_normal(np.zeros(N), K, N_samples).T
 
     def draw_posterior_samples(self, X_star, N_samples=1):
+        """
+        Draw N_samples from posterior distribution evaluated at points specified in X_star.
+
+        :param X_star: [nxD numpy array] of points at which to compute post (D is number of dimensions of input space)
+        :param N_samples: [scalar] number of points to sample from posterior evaluated at X_star
+        :return: [nxN_samples numpy array] of posterior evaluations at points in X_star
+        """
         X = self.X
         y = self.y
 
@@ -148,9 +214,24 @@ class SFGP:
 
     #  Prints the negative log-marginal likelihood at each training step
     def callback(self, params):
+        """
+        Callback evaluated in hyperparameter training process. Computes and displays current negative log-marginal
+        likelihood of model.
+
+        :param params: [1xk numpy array] of hyperparameters of GP (k is number of hyperparameters)
+        :return: None
+        """
         print("Log likelihood {}".format(self.likelihood(params)))
 
     def updt_info(self, X_new, y_new):
+        """
+        Update model with new X observation points and y observation values. Recompute Cholesky decomposition of
+        covariance matrix stored in model.
+
+        :param X_new: [nxD numpy array] of observation points (D is number of dimensions of input space)
+        :param y_new: [nx1 numpy array] of observation values
+        :return: None
+        """
         self.X = X_new
         X = X_new
 
@@ -171,6 +252,14 @@ class SFGP:
         self.L = L
 
     def updt(self, X_addition, y_addition):
+        """
+        Update model with additional X observation points and y observation values. Recompute Cholesky decomposition of
+        covariance matrix stored in model.
+
+        :param X_addition: [nxD numpy array] of observation points to be added (D is number of dimensions of input space)
+        :param y_addition: [nx1 numpy array] of observation values to be added
+        :return: None
+        """
         self.X = np.vstack((self.X, X_addition))
         self.y = np.vstack((self.y, y_addition))
         self.updt_info(self.X, self.y)

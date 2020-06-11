@@ -22,8 +22,8 @@ def normalize(y):
     Normalize the numpy array y between 0 + epsilon and 1. Epsilon lower bound prevents divide by zero errors later
     in coverage algorithms (points with zero weight lead to numerical errors when computing cell centroids).
 
-    :param y: nx1 numpy array to be normalized
-    :return: normalized nx1 numpy array with values in [epsilon, 1]
+    :param y: [nx1 numpy array] of values to be normalized
+    :return: [nx1 numpy array] normalized with values in [epsilon, 1]
     """
     y = y - np.amin(y) + epsilon
     y = y / np.amax(y)
@@ -39,11 +39,11 @@ def exponential(x_star, lenscale, positive_centers, negative_centers):
     where x is a 2-dimensional point in the unit square, x' is a base point of positive_centers or negative_centers, and
     the sign is determined by whether the point is in positive_centers or negative_centers
 
-    :param x_star: nx2 numpy array of (x, y) pairs at which to evaluate distribution function
-    :param lenscale: lengthscale parameter of bump function: greater values correspond to "smoother" functions
-    :param positive_centers: points at which a positive bump function is centered
-    :param negative_centers: points at which a negative bump function is centered
-    :return: normalized nx1 numpy array containing z=f(x,y) where (x,y) are specified by points in x_star and f is
+    :param x_star: [nx2 numpy array] of (x, y) pairs at which to evaluate distribution function
+    :param lenscale: [scalar] lengthscale parameter of bump function: greater values correspond to "smoother" functions
+    :param positive_centers: [ix2 numpy array] of points at which a positive bump function is centered
+    :param negative_centers: [jx2 numpy array] of points at which a negative bump function is centered
+    :return: [nx1 numpy array] containing z=f(x,y) where (x,y) are specified by points in x_star and f is
              parameterized by positive_centers, negative_centers and lenscale
     """
     y = np.zeros(x_star.shape[0])

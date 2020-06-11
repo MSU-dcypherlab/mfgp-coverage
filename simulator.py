@@ -1,3 +1,18 @@
+"""
+simulator.py
+
+Simulates learning-coverage algorithms on a given density function over the unit square.
+Given no knowledge or incomplete knowledge of the density function beforehand, agents must balance
+exploration (learning the density function) with exploitation (covering the density function) to converge
+upon a locally optimal solution of the density-respective coverage problem.
+
+We refer readers to Todescato et. al. "Multi-robots Gaussian estimation and coverage..." for an introduction
+to the dual problem at hand. We model the unknown function as a (single- or multi-fidelity) Gaussian Process.
+
+by: Andrew McDonald, D-CYPHER Lab, Michigan State University
+last modified: 6/11/2020
+"""
+
 import sys
 import random
 import cProfile
@@ -9,15 +24,29 @@ from matplotlib import path
 from gaussian_process import MFGP, SFGP
 from plotter import Plotter
 
+""" Boundary cushion to be used in computations with and plots of unit square """
 eps = 0.1
+
+""" Delimiter used in console output """
 line_break = "\n" + "".join(["*" for i in range(100)]) + "\n"
 
 
 def init_MFGP(hyp, prior):
+    """
+    Initialize the MFGP model to be utilized in this simulation with or without a prior to condition upon.
+    If provided, the prior is assumed to be low-fidelity.
+    To obtain hyperparameters, the MFGP model must be trained on a given dataset before simulation. See trainer.py.
+
+    :param hyp: [1x9 pandas DF] of log-scaled hyperparameters to use in model (9 is number of hyperparameters)
+                log-scaled hyp take the form [mu_lo, s^2_lo, L_lo, mu_hi, s^2_hi, L_hi, rho, noise_lo, noise_hi]
+    :param prior: [nx3 pandas DF] of (x,y,z=f(x,y)) triples to condition model upon
+                  if empty, model will not be conditioned on any prior
+    :return: [MFGP object] initialized MFGP model to be used in simulation
+    """
     if prior is not None and len(prior) > 0:
         p = np.vstack(prior.values.tolist())
         X_L = np.reshape(p[:, [0, 1]], (-1,2))  # all rows, first two columns are X,Y of lofi prior
-        y_L = np.reshape(p[:, 2], (-1,1))  # all rows, third column is F of lofi prior
+        y_L = np.reshape(p[:, 2], (-1,1))       # all rows, third column is F of lofi prior
     else:
         X_L = np.empty([0, 2])
         y_L = np.empty([0, 1])
@@ -34,10 +63,20 @@ def init_MFGP(hyp, prior):
 
 
 def init_SFGP(hyp, prior):
+    """
+    Initialize the SFGP model to be utilized in this simulation with or without a prior to condition upon.
+    To obtain hyperparameters, the SFGP model must be trained on a given dataset before simulation. See trainer.py.
+
+    :param hyp: [1x4 pandas DF] of log-scaled hyperparameters to use in model (4 is number of hyperparameters)
+                log-scaled hyp take the form [mu, s^2, L, noise]
+    :param prior: [nx3 pandas DF] of (x,y,z=f(x,y)) triples to condition model upon
+                  if empty, model will not be conditioned on any prior
+    :return: [SFGP object] initialized SFGP model to be used in simulation
+    """
     if prior is not None and len(prior) > 0:
         p = np.vstack(prior.values.tolist())
-        X = np.reshape(p[:, [0, 1]], (-1, 2))  # all rows, first two columns are X,Y of lofi prior
-        y = np.reshape(p[:, 2], (-1, 1))  # all rows, third column is F of lofi prior
+        X = np.reshape(p[:, [0, 1]], (-1, 2))   # all rows, first two columns are X,Y of lofi prior
+        y = np.reshape(p[:, 2], (-1, 1))        # all rows, third column is F of lofi prior
     else:
         X = np.empty([0, 2])
         y = np.empty([0, 1])
@@ -50,32 +89,17 @@ def init_SFGP(hyp, prior):
     return model
 
 
-def plot_voronoi(vor, bounding_box):
-    # Plot initial points
-    plt.plot(vor.filtered_points[:, 0], vor.filtered_points[:, 1], 'b.')
-    # Plot ridges points
-    for region in vor.filtered_regions:
-        vertices = vor.vertices[region, :]
-        plt.plot(vertices[:, 0], vertices[:, 1], 'go')
-    # Plot ridges
-    for region in vor.filtered_regions:
-        vertices = vor.vertices[region + [region[0]], :]
-        plt.plot(vertices[:, 0], vertices[:, 1], 'k-')
-    plt.xlim(bounding_box[0] - 0.1, bounding_box[1] + 0.1)
-    plt.ylim(bounding_box[2] - 0.1, bounding_box[3] + 0.1)
-    plt.show()
-
-
 def in_polygon(xq, yq, xv, yv):
     """
-    Retrived from https://stackoverflow.com/a/49733403 May 23, 2020
-    Translates Matlab inpolygon implementation described here: https://www.mathworks.com/help/matlab/ref/inpolygon.html
     Determines if query points (xq, yq) are contained in the polygon specified by (xv, yv)
-    :param xq:
-    :param yq:
-    :param xv:
-    :param yv:
-    :return:
+    Translates Matlab inpolygon implementation described here: https://www.mathworks.com/help/matlab/ref/inpolygon.html
+    Retrieved from https://stackoverflow.com/a/49733403 May 23, 2020
+
+    :param xq: [nx1 numpy array] of query point x-coordinates
+    :param yq: [nx1 numpy array] of query point y-coordinates
+    :param xv: [nx1 numpy array] of bounding polygon x-coordinates
+    :param yv: [nx1 numpy array] of bounding polygon y-coordinates
+    :return: [nx1 numpy array] of boolean values indicating if i-th (xq, yq) point is inside (xv, yv) polygon
     """
     shape = xq.shape
     xq = xq.reshape(-1)
@@ -89,21 +113,24 @@ def in_polygon(xq, yq, xv, yv):
 
 def poly_area(x, y):
     """
+    Implementation of the Shoelace formula to compute 2D polygonal area (https://en.wikipedia.org/wiki/Shoelace_formula)
     Retrieved from https://stackoverflow.com/a/30408825 May 24, 2020
-    Implementation of the Shoelace formula for computing polygonal area (https://en.wikipedia.org/wiki/Shoelace_formula)
-    :param x:
-    :param y:
-    :return:
+
+    :param x: [nx1 numpy array] of x points defining polygon
+    :param y: [nx1 numpy array] of y points defining polygon
+    :return: [scalar] area of polygon specified by (x,y) points
     """
-    return 0.5*np.abs(np.dot(x,np.roll(y,1))-np.dot(y,np.roll(x,1)))
+    return 0.5 * np.abs(np.dot(x, np.roll(y, 1))-np.dot(y, np.roll(x, 1)))
 
 
 def in_box(points, bounding_box):
     """
+    Determine if a given set of 2D points is inside a given 2D bounding box
     Retrieved from https://stackoverflow.com/a/33602171 May 23, 2020
-    :param points: 
-    :param bounding_box: 
-    :return: 
+
+    :param points: [nx2 numpy array] of (x,y) points to be checked
+    :param bounding_box: [1x4 numpy array] containing limits [x_min, x_max, y_min, y_max]
+    :return: [nx1 numpy array] of boolean values indicating if the i-th (x,y) point is inside the bounding box
     """
     return np.logical_and(np.logical_and(bounding_box[0] - eps <= points[:, 0],
                                          points[:, 0] <= bounding_box[1] + eps),
@@ -113,14 +140,17 @@ def in_box(points, bounding_box):
 
 def voronoi_bounded(points, bounding_box):
     """
+    Compute 2D Voronoi partition bounded within a bounding_box
     Retrieved from https://stackoverflow.com/a/33602171 May 23, 2020
-    :param points:
-    :param bounding_box:
-    :return:
+
+    :param points: [nx2 numpy array] of seed points around which to construct Voronoi diagram
+    :param bounding_box: [1x4 numpy array] containing limits [x_min, x_max, y_min, y_max]
+    :return: [scipy Voronoi object] with filtered_points and filtered_regions fields corresponding to the points
+             and regions inside the bounding_box
     """
     # Select points inside the bounding box
     i = in_box(points, bounding_box)
-    # Mirror points
+    # Mirror points left, right, down, and up around bounding box to artificially bound Voronoi diagram
     points_center = points[i, :]
     points_left = np.copy(points_center)
     points_left[:, 0] = bounding_box[0] - (points_left[:, 0] - bounding_box[0] + eps)
@@ -139,31 +169,25 @@ def voronoi_bounded(points, bounding_box):
                                            axis=0),
                                  axis=0),
                        axis=0)
-    # Compute Voronoi
+    # Compute Voronoi using scipy
     vor = Voronoi(points)
-    # Filter regions
-    regions = []
-    for region in vor.regions:
-        flag = True
-        for index in region:
-            if index == -1:
-                flag = False
-                break
-            else:
-                x = vor.vertices[index, 0]
-                y = vor.vertices[index, 1]
-                if not(bounding_box[0] - eps <= x <= bounding_box[1] + eps and
-                       bounding_box[2] - eps <= y <= bounding_box[3] + eps):
-                    flag = False
-                    break
-        if region != [] and flag:
-            regions.append(region)
-    vor.filtered_points = points_center
-    vor.filtered_regions = np.array(vor.regions)[vor.point_region[:vor.npoints//5]]
+    # Save points and regions within bounds as "filtered"
+    vor.filtered_points = points_center     # center points are the original points
+    vor.filtered_regions = \
+        np.array(vor.regions)[vor.point_region[:vor.npoints//5]]     # first 1/5 of regions correspond to center
     return vor
 
 
 def compute_loss(vor, truth_arr):
+    """
+    Compute the loss of a given agent configuration according to loss function specified in
+    Equation 2 of Todescato et. al. "Multi-robots Gaussian estimation and coverage..."
+
+    :param vor: [scipy Voronoi object] bounded Voronoi partition seeded by current agent configuration,
+                with bounded points and regions specified in filtered_points and filtered_regions fields
+    :param truth_arr: [nx3 numpy array] of (x,y,z) triples where z=f(x,y) is the ground truth function at each point
+    :return: [scalar] loss of current agent configuration
+    """
     loss = 0
 
     # 1) iterate over each cell in voronoi partition and compute loss
@@ -181,7 +205,7 @@ def compute_loss(vor, truth_arr):
         cell_loss = np.mean(point_loss) * cell_area     # cell_loss = integral(point_loss), discretized as average
         loss += cell_loss
 
-        # plt.plot(in_points[:,0], in_points[:,1], 'ro')
+        # plt.plot(in_points[:,0], in_points[:,1], 'ro')        # debug loss computation of each cell
         # plt.plot(center[0], center[1], 'go')
         # plt.xlim((-0.1, 1.1))
         # plt.ylim((-0.1, 1.1))
@@ -192,11 +216,24 @@ def compute_loss(vor, truth_arr):
 
 
 def compute_centroids(vor, x_star, mu_star):
+    """
+    Compute the weighted centroids of a Voronoi partition over 2D domain x_star using the predicted mean mu_star
+    output by the GP model (more generally, mu_star is the weighting function)
+    When Voronoi partitions are iteratively seeded by the previous step's centroids, this implements Lloyd's Algorithm
+
+    :param vor: [scipy Voronoi object] bounded Voronoi partition seeded by
+                current agent configuration OR previous step's centroids (to implement Lloyd),
+                with bounded points and regions specified in filtered_points and filtered_regions fields
+    :param x_star: [nx2 numpy array] of (x,y) pairs at which the predicted mean (mu_star) is output by the GP model
+    :param mu_star: [nx1 numpy array] of mu(x,y) estimates of posterior mean output by the GP model
+                    more generally, the weighting function to use on points in x_star when computing weighted centroids
+    :return: [nAgentsx2 numpy array] of weighted centroids (x,y) of each cell
+    """
     centroids = np.empty([0, 2])
 
-    # 1) iterate over each cell in voronoi partition and compute centroid
+    # 1) iterate over each cell in bounded voronoi partition and compute centroid
     for i, cell in enumerate(vor.filtered_regions):
-        # 2) select only the truth points in this cell from truth_arr
+        # 2) select only the truth points INSIDE this cell from truth_arr
         vertices = vor.vertices[cell, :]
         in_indices = in_polygon(x_star[:, 0], x_star[:, 1], vertices[:, 0], vertices[:, 1])
         in_points = x_star[in_indices, :]
@@ -208,7 +245,7 @@ def compute_centroids(vor, x_star, mu_star):
         weights = np.column_stack((in_means[:, 0], in_means[:, 0]))     # create nx2 array from nx1 array of f_vals
         weighted_points = np.multiply(weights, in_points[:, [0, 1]])   # (x,y) weighted by f elementwise
         weighted_integral = np.mean(weighted_points, axis=0) * cell_area    # discretized 1x2 integral of (x*f, y*f)
-        centroid = weighted_integral / f_integral   # mean 1x2 weighted location of cell
+        centroid = weighted_integral / f_integral   # mean 1x2 weighted location of cell, i.e., centroid
 
         # 4) sanity check: if centroid is out of domain, snap it back inside domain
         if centroid[0] < np.amin(x_star[:, 0]):     # check x lower bound
@@ -217,12 +254,13 @@ def compute_centroids(vor, x_star, mu_star):
             centroid[0] = np.amax(x_star[:, 0])
         if centroid[1] < np.amin(x_star[:, 1]):     # check y lower bound
             centroid[1] = np.amin(x_star[:, 1])
-        if centroid[1] > np.amax(x_star[:, 1]):     # check y lower bound
+        if centroid[1] > np.amax(x_star[:, 1]):     # check y upper bound
             centroid[1] = np.amax(x_star[:, 1])
 
+        # 5) add to collection of centroids and continue
         centroids = np.vstack((centroids, centroid))
 
-        # plt.figure()
+        # plt.figure()                              # debug computed centroid for each cell
         # plt.scatter(in_points[:, 0], in_points[:, 1], c=in_means[:, 0])
         # plt.plot(centroid[0], centroid[1], 'k+')
         # plt.xlim((-0.1, 1.1))
@@ -233,6 +271,18 @@ def compute_centroids(vor, x_star, mu_star):
 
 
 def compute_max_var(vor, truth_arr, var_star):
+    """
+    Find points of maximum posterior variance output by the GP model in each cell of a given Voronoi partition.
+
+    :param vor: [scipy Voronoi object] bounded Voronoi partition seeded by
+                current agent configuration OR previous step's centroids (if implementing Lloyd),
+                with bounded points and regions specified in filtered_points and filtered_regions fields
+    :param truth_arr: [nx3 numpy array] of (x,y,z) triples where z=f(x,y) is the ground truth function at each point
+    :param var_star: [nxn numpy array] of cov(x,x') estimates of posterior variance (diagonal contains variances)
+    :return: [2 value tuple] of
+        [nAgentsx2 numpy array] of (x,y) points maximizing variance in each cell (argmax(var) points of each cell)
+        [nAgentsx1 numpy array] of maximum variance in each cell (variance evaluated at argmax in each cell)
+    """
     argmax_var_t = np.empty([0, 2])
     max_var_t = np.empty([0, 1])
     var = np.diag(var_star)     # point variances are diagonal of cov matrix
@@ -251,7 +301,7 @@ def compute_max_var(vor, truth_arr, var_star):
         argmax_var_t = np.vstack((argmax_var_t, argmax_var))
         max_var_t = np.vstack((max_var_t, max_var))
 
-        # plt.scatter(in_points[:, 0], in_points[:, 1], c=in_var)
+        # plt.scatter(in_points[:, 0], in_points[:, 1], c=in_var)       # debug max var points of each cell
         # plt.plot(argmax_var[0], argmax_var[1], 'k+')
         # plt.xlim((-0.1, 1.1))
         # plt.ylim((-0.1, 1.1))
@@ -259,12 +309,33 @@ def compute_max_var(vor, truth_arr, var_star):
 
     return argmax_var_t, max_var_t
 
-def sfgp_todescato(sim_num, iterations, agents, positions, truth, prior, hyp, console, plotter, log):
 
+def sfgp_todescato(sim_num, iterations, agents, positions, truth, prior, hyp, console, plotter, log):
+    """
+    Implement Algorithm 1 of Todescato et. al. "Multi-robots Gaussian estimation and coverage..." using a
+    single-fidelity GP model
+
+    :param sim_num: [scalar] index number of current simulation (relevant when running multiple simulations)
+    :param iterations: [scalar] number of iterations to run simulation
+    :param agents: [scalar] number of agents being simulated
+    :param positions: [nAgentsx2 numpy array] of initial (x,y) points of agents
+    :param truth: [nx3 pandas DF] triples of (x,y,z=f(x,y)) where z=f is the ground truth function at each point
+    :param prior: [mx3 pandas DF] triples of (x,y,z~f(x,y)) where z~f is a low-fidelity prior estimate of the ground
+                  truth function at each point, and m << n such that the prior estimate is given only at a few points
+    :param hyp: [1x4 pandas DF] of log-scaled hyperparameters to use in SFGP model (4 is number of hyperparameters)
+                log-scaled hyp take the form [mu, s^2, L, noise]
+    :param console: boolean indicating whether to display simulation progress on console
+    :param plotter: boolean indicating whether to plot simulation progress using plotter.py
+    :param log: boolean indicating whether to log simulation progress into CSV for performance analysis
+    :return: [3 value tuple] of
+        [list of dictionaries] log of loss by iteration
+        [list of dictionaries] log of agent positions and actions by iteration
+        [list of dictionaries] log of samples taken by agent over the course of simulation
+    """
     print(line_break + "SFGP Todescato" + line_break) if console else None
 
     # 0) Initialize logging lists and plotter
-    loss_log, agent_log, sample_log, gp_log = [], [], [], [] if log else None
+    loss_log, agent_log, sample_log = [], [], [] if log else None
     plotter.reset() if plotter else None
 
     # 1) initialize SFGP model with hyperparameters and empty prior
@@ -351,11 +422,6 @@ def sfgp_todescato(sim_num, iterations, agents, positions, truth, prior, hyp, co
             for i in range(id_new.size):
                 sample_log.append({"SimNum": sim_num, "Iteration": iteration, "Agent": id_new[i, 0],
                                    "X": x_new[i, 0], "Y": x_new[i, 1], "Sample": y_new[i, 0]})
-            # var = np.diag(var_star)
-            # for i in range(x_star.shape[0]):
-            #     gp_log.append({"SimNum": sim_num, "Iteration": iteration,
-            #                    "X": x_star[i, 0], "Y": x_star[i, 1],
-            #                    "Mu": mu_star[i, 0], "Var": var[i]})
         if plotter:
             plotter.plot_explore(prob_explore_t, explore_t)
             plotter.plot_mean(x_star, mu_star)
@@ -373,14 +439,35 @@ def sfgp_todescato(sim_num, iterations, agents, positions, truth, prior, hyp, co
                 positions[i, :] = centroids_t[i, :]
 
     # 14) return log dictionary lists to driver function, which will save them into a dataframe
-    return loss_log, agent_log, sample_log, gp_log
+    return loss_log, agent_log, sample_log
+
 
 def mfgp_todescato(sim_num, iterations, agents, positions, truth, prior, hyp, console, plotter, log):
+    """
+    Implement Algorithm 1 of Todescato et. al. "Multi-robots Gaussian estimation and coverage..." using a
+    multi-fidelity GP model
 
+    :param sim_num: [scalar] index number of current simulation (relevant when running multiple simulations)
+    :param iterations: [scalar] number of iterations to run simulation
+    :param agents: [scalar] number of agents being simulated
+    :param positions: [nAgentsx2 numpy array] of initial (x,y) points of agents
+    :param truth: [nx3 pandas DF] triples of (x,y,z=f(x,y)) where z=f is the ground truth function at each point
+    :param prior: [mx3 pandas DF] triples of (x,y,z~f(x,y)) where z~f is a low-fidelity prior estimate of the ground
+                  truth function at each point, and m << n such that the prior estimate is given only at a few points
+    :param hyp: [1x9 pandas DF] of log-scaled hyperparameters to use in MFGP model (9 is number of hyperparameters)
+                log-scaled hyp take the form [mu_lo, s^2_lo, L_lo, mu_hi, s^2_hi, L_hi, rho, noise_lo, noise_hi]
+    :param console: boolean indicating whether to display simulation progress on console
+    :param plotter: boolean indicating whether to plot simulation progress using plotter.py
+    :param log: boolean indicating whether to log simulation progress into CSV for performance analysis
+    :return: [3 value tuple] of
+        [list of dictionaries] log of loss by iteration
+        [list of dictionaries] log of agent positions and actions by iteration
+        [list of dictionaries] log of samples taken by agent over the course of simulation
+    """
     print(line_break + "MFGP Todescato" + line_break) if console else None
 
     # 0) Initialize logging lists and plotter
-    loss_log, agent_log, sample_log, gp_log = [], [], [], [] if log else None
+    loss_log, agent_log, sample_log = [], [], [] if log else None
     plotter.reset() if plotter else None
 
     # 1) initialize MFGP model with hyperparameters and empty prior
@@ -417,7 +504,6 @@ def mfgp_todescato(sim_num, iterations, agents, positions, truth, prior, hyp, co
         # ensure all positions are valid: if not, break and investigate
         if not in_box(positions, bounding_box).all():
             print("Warning: out of bounds")
-
 
         # 7) record samples from each agent on explore step (Todescato "Listen")
         x_new = np.empty([0, 2])    # store new sample points
@@ -477,11 +563,6 @@ def mfgp_todescato(sim_num, iterations, agents, positions, truth, prior, hyp, co
             for i in range(id_new.size):
                 sample_log.append({"SimNum": sim_num, "Iteration": iteration, "Agent": id_new[i, 0],
                                    "X": x_new[i, 0], "Y": x_new[i, 1], "Sample": y_new[i, 0]})
-            # var = np.diag(var_star)
-            # for i in range(x_star.shape[0]):
-            #     gp_log.append({"SimNum": sim_num, "Iteration": iteration,
-            #                    "X": x_star[i, 0], "Y": x_star[i, 1],
-            #                    "Mu": mu_star[i, 0], "Var": var[i]})
         if plotter:
             plotter.plot_explore(prob_explore_t, explore_t)
             plotter.plot_mean(x_star, mu_star)
@@ -499,52 +580,59 @@ def mfgp_todescato(sim_num, iterations, agents, positions, truth, prior, hyp, co
                 positions[i, :] = centroids_t[i, :]
 
     # 14) return log dictionary lists to driver function, which will save them into a dataframe
-    return loss_log, agent_log, sample_log, gp_log
+    return loss_log, agent_log, sample_log
 
 
 if __name__ == "__main__":
+    """
+    Run a series of multiagent learning-coverage algorithm simulations.
+    """
 
-    name = "Data/two_corners"
-    out_name = "Data/two_corners_sf"
+    name = "Data/two_corners"           # name of simulation, used as prefix of all associated input filenames
+    out_name = "Data/two_corners_sf"    # name of simulation, used as prefix of all associated output filenames
 
-    agents = 4
-    iterations = 50
-    simulations = 10
-    console = True
-    plotter = Plotter([-0.1, 1.1, -0.1, 1.1])   # x_min, x_max, y_min, y_max
-    log = True
-    np.random.seed(1234)
+    agents = 4              # number of agents to use in simulation
+    iterations = 50         # number of iterations to run each simulation
+    simulations = 10        # number of simulations to run
+    console = True          # boolean indicating if intermediate output should print to console
+    log = True              # boolean indicating if output should be logged to CSV for performance analysis
+    plotter = Plotter([-eps, 1 + eps, -eps, 1 + eps])   # x_min, x_max, y_min, y_max
+    # plotter = None          # do not plot
+    np.random.seed(1234)    # seed random generator for reproducibility
 
-    truth = pd.read_csv(name + "_hifi.csv")
-    mf_hyp = pd.read_csv(name + "_mf_hyp.csv")
-    sf_hyp = pd.read_csv(name + "_sf_hyp.csv")
-    # prior = pd.read_csv("Data/null_prior.csv")
-    prior = pd.read_csv(name + "_prior.csv")
+    truth = pd.read_csv(name + "_hifi.csv")         # CSV specifying ground truth (x,y,z=f(x,y)) triples
+    mf_hyp = pd.read_csv(name + "_mf_hyp.csv")      # CSV specifying multi-fidelity GP hyperparameters
+    sf_hyp = pd.read_csv(name + "_sf_hyp.csv")      # CSV specifying single-fidelity GP hyperparameters
+    # prior = pd.read_csv("Data/null_prior.csv")      # Use a null prior
+    prior = pd.read_csv(name + "_prior.csv")        # CSV specifying prior to condition GP upon before simulation
 
-    loss_log, agent_log, sample_log, gp_log = [], [], [], []
+    loss_log, agent_log, sample_log = [], [], []    # Initialize logging lists
 
     for sim_num in range(simulations):
         print(line_break + f"Simulation {sim_num}" + line_break)
 
+        # 1) randomly initialize agent positions
         x_positions = [random.random() for i in range(agents)]
         y_positions = [random.random() for i in range(agents)]
         positions = np.column_stack((x_positions, y_positions))
 
-        loss_log_t, agent_log_t, sample_log_t, gp_log_t = \
+        # 2) run simulation
+        loss_log_t, agent_log_t, sample_log_t = \
             sfgp_todescato(sim_num, iterations, agents, positions, truth, prior, sf_hyp, console, plotter, log)
             # mfgp_todescato(sim_num, iterations, agents, positions, truth, prior, mf_hyp, console, plotter, log)
             # sfgp_todescato(sim_num, iterations, agents, positions, truth, prior, sf_hyp, console, plotter, log)
+
+        # 3) extend logging lists to include current simulation's results
         loss_log.extend(loss_log_t)
         agent_log.extend(agent_log_t)
         sample_log.extend(sample_log_t)
-        # gp_log.extend(gp_log_t)
 
-    # save dataframes from simulation results
-    loss_df = pd.DataFrame(loss_log)
-    loss_df.to_csv(out_name + "_loss.csv")
-    agent_df = pd.DataFrame(agent_log)
-    agent_df.to_csv(out_name + "_agent.csv")
-    sample_df = pd.DataFrame(sample_log)
-    sample_df.to_csv(out_name + "_sample.csv")
-    # gp_df = pd.DataFrame(gp_log)
-    # gp_df.to_csv(name + "_gp.csv")
+    # save dataframes from simulation results for post-analysis
+    if log:
+        loss_df = pd.DataFrame(loss_log)
+        loss_df.to_csv(out_name + "_loss.csv")
+        agent_df = pd.DataFrame(agent_log)
+        agent_df.to_csv(out_name + "_agent.csv")
+        sample_df = pd.DataFrame(sample_log)
+        sample_df.to_csv(out_name + "_sample.csv")
+

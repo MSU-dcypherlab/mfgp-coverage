@@ -58,9 +58,10 @@ class Plotter:
         Loss given by Equation 2 of Todescato et. al. "Multi-robots Gaussian estimation and coverage..."
         Referenced https://stackoverflow.com/a/33602171 May 24, 2020 for plotting bounded Voronoi
 
-        :param vor: [scipy Voronoi object] Voronoi partition corresponding to latest loss calculation to be plotted
+        :param vor: [scipy Voronoi object] bounded Voronoi partition corresponding to loss calculation to be plotted,
+                    with bounded points and regions specified in filtered_points and filtered_regions fields
         :param truth: [nx3 numpy array] of (x,y,z) triples where z=f(x,y) is the ground truth function at each point
-        :param explore: [nRobotsx1 numpy array] of boolean variables indicating if robot i is on explore step
+        :param explore: [nAgentsx1 numpy array] of boolean variables indicating if robot i is on explore step
         :return: None
         """
         self.LossVorAx.cla()
@@ -91,7 +92,7 @@ class Plotter:
         Referenced https://stackoverflow.com/a/33602171 May 24, 2020 for plotting bounded Voronoi
 
         :param vor: [scipy Voronoi object] Voronoi partition corresponding to latest Lloyd iteration to be plotted
-        :param centroids: [nRobotsx2 numpy array] of (x,y) pairs indicating each robot's cell centroid
+        :param centroids: [nAgentsx2 numpy array] of (x,y) pairs indicating each robot's cell centroid
         :param truth: [nx3 numpy array] of (x,y,z) triples where z=f(x,y) is the ground truth function at each point
         :return: None
         """
@@ -170,7 +171,7 @@ class Plotter:
         Plot the current probability of exploration and explore/exploit decision for each agent.
 
         :param prob_explore: [nRobotx1 numpy array] of the probability of robot i exploring on this step
-        :param explore: [nRobotsx1 numpy array] of boolean variables indicating if robot i is on explore step
+        :param explore: [nAgentsx1 numpy array] of boolean variables indicating if robot i is on explore step
         :return: None
         """
         self.ExpAx.cla()

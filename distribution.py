@@ -1,8 +1,8 @@
 """
 distribution.py
 
-Generates 3-dimensional (x, y, z=f(x,y)) distributions normalized to the unit cube [0, 1]^3 used by learning and
-coverage algorithms in multiagent settings. Displays intermediate results of generated distributions using
+Generates 3-dimensional (x, y, z=f(x,y)) distributions normalized to the unit cube [0, 1]^3 used by learning-coverage
+algorithms in multiagent settings. Displays intermediate results of generated distributions using
 matplotlib and saves (x, y, z=f(x,y)) triples to a CSV file
 
 by: Andrew McDonald, D-CYPHER Lab, Michigan State University

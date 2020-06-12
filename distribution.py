@@ -121,16 +121,7 @@ def diag():
     prior_df = pd.DataFrame(prior)
     prior_df.columns = ["X", "Y", "f_prior"]
 
-    # 5) save files
-    f_name = "diag"
-    hifi_df.to_csv("Data/" + f_name + "_hifi.csv", index=False)
-    lofi_df.to_csv("Data/" + f_name + "_lofi.csv", index=False)
-    hifi_train_df.to_csv("Data/" + f_name + "_hifi_train.csv", index=False)
-    lofi_train_df.to_csv("Data/" + f_name + "_lofi_train.csv", index=False)
-    sifi_train_df.to_csv("Data/" + f_name + "_sifi_train.csv", index=False)
-    prior_df.to_csv("Data/" + f_name + "_prior.csv", index=False)
-
-    # 9) visualize results
+    # 6) visualize results
     fig = plt.figure()
 
     ax = fig.add_subplot(321)
@@ -167,6 +158,18 @@ def diag():
     ax.set_title("Prior Points")
 
     plt.show()
+
+    # 7) save files if distribution is deemed valid
+    valid = input("Save distribution?")
+    if valid.lower() == "y":
+        f_name = "diag"
+        hifi_df.to_csv("Data/" + f_name + "_hifi.csv", index=False)
+        lofi_df.to_csv("Data/" + f_name + "_lofi.csv", index=False)
+        hifi_train_df.to_csv("Data/" + f_name + "_hifi_train.csv", index=False)
+        lofi_train_df.to_csv("Data/" + f_name + "_lofi_train.csv", index=False)
+        sifi_train_df.to_csv("Data/" + f_name + "_sifi_train.csv", index=False)
+        prior_df.to_csv("Data/" + f_name + "_prior.csv", index=False)
+
     print("Done.")
 
 
@@ -226,16 +229,7 @@ def two_corners():
     prior_df = pd.DataFrame(prior)
     prior_df.columns = ["X", "Y", "f_prior"]
 
-    # 5) save files
-    # f_name = "two_corners"
-    # hifi_df.to_csv("Data/" + f_name + "_hifi.csv", index=False)
-    # lofi_df.to_csv("Data/" + f_name + "_lofi.csv", index=False)
-    # hifi_train_df.to_csv("Data/" + f_name + "_hifi_train.csv", index=False)
-    # lofi_train_df.to_csv("Data/" + f_name + "_lofi_train.csv", index=False)
-    # sifi_train_df.to_csv("Data/" + f_name + "_sifi_train.csv", index=False)
-    # prior_df.to_csv("Data/" + f_name + "_prior.csv", index=False)
-
-    # 9) visualize results
+    # 6) visualize results
     fig = plt.figure()
 
     ax = fig.add_subplot(321)
@@ -272,6 +266,18 @@ def two_corners():
     ax.set_title("Prior Points")
 
     plt.show()
+
+    # 7) save files if distribution is deemed valid
+    valid = input("Save distribution?")
+    if valid.lower() == "y":
+        f_name = "two_corners"
+        hifi_df.to_csv("Data/" + f_name + "_hifi.csv", index=False)
+        lofi_df.to_csv("Data/" + f_name + "_lofi.csv", index=False)
+        hifi_train_df.to_csv("Data/" + f_name + "_hifi_train.csv", index=False)
+        lofi_train_df.to_csv("Data/" + f_name + "_lofi_train.csv", index=False)
+        sifi_train_df.to_csv("Data/" + f_name + "_sifi_train.csv", index=False)
+        prior_df.to_csv("Data/" + f_name + "_prior.csv", index=False)
+
     print("Done.")
 
 

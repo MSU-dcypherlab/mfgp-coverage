@@ -325,6 +325,7 @@ def compute_sample_points(model, x_star, threshold, console):
     :param model: [MFGP or SFGP object] GP model with valid hyperparameters and given observations
     :param x_star: [nx2 numpy array] of (x,y) pairs at which the predicted mean/var is output by the GP model
     :param threshold: [scalar] value below which maximum variance needs to be reduced
+    :param console: [boolean] indicates if computational progress should be displayed on console
     :return: [nx2 numpy array] of (x,y) pairs at which samples must be taken in order to most efficiently reduce
              predictive variance beneath a given threshold
     """
@@ -337,8 +338,8 @@ def compute_sample_points(model, x_star, threshold, console):
     while max_var > threshold:
 
         # status update
-        print("Current max var: " + str(max_var) + " // Target threshold: " + str(threshold)) if log else None
-        print("Finding sample point: " + str(sample_points.shape[0] + 1)) if log else None
+        print("Current max var: " + str(max_var) + " // Target threshold: " + str(threshold)) if console else None
+        print("Finding sample point: " + str(sample_points.shape[0] + 1)) if console else None
 
         # determine next point to sample
         argmax_var = x_star[np.argmax(var)]     # find point at which predictive variance is maximized
@@ -743,7 +744,7 @@ def mfgp_choi(sim_num, iterations, agents, positions, truth, prior, hyp, console
         threshold = choi_threshold(var_star)
 
         # 7) determine points to sample for explore portion of this epoch
-        sample_points = compute_sample_points(model, x_star, threshold, log)
+        sample_points = compute_sample_points(model, x_star, threshold, console)
 
         # 8) k-means cluster points to sample for explore portion of this epoch (TODO)
         sample_clusters = compute_sample_clusters(agents, sample_points, positions)

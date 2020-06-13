@@ -14,6 +14,7 @@ last modified: 6/11/2020
 """
 
 import sys
+import copy
 import random
 import cProfile
 import numpy as np
@@ -29,6 +30,11 @@ eps = 0.1
 
 """ Delimiter used in console output """
 line_break = "\n" + "".join(["*" for i in range(100)]) + "\n"
+
+
+#######################################################################################################################
+# Helper functions
+#######################################################################################################################
 
 
 def init_MFGP(hyp, prior):
@@ -310,6 +316,87 @@ def compute_max_var(vor, truth_arr, var_star):
     return argmax_var_t, max_var_t
 
 
+def compute_sample_points(model, x_star, threshold, console):
+    """
+    Given GP model, determine points to sample in order to reduce maximum variance below a given threshold.
+    Choose points most efficiently by sampling point with maximal predictive variance on each iteration.
+    Utilized in Choi doubling algorithms.
+
+    :param model: [MFGP or SFGP object] GP model with valid hyperparameters and given observations
+    :param x_star: [nx2 numpy array] of (x,y) pairs at which the predicted mean/var is output by the GP model
+    :param threshold: [scalar] value below which maximum variance needs to be reduced
+    :return: [nx2 numpy array] of (x,y) pairs at which samples must be taken in order to most efficiently reduce
+             predictive variance beneath a given threshold
+    """
+    temp_model = copy.deepcopy(model)   # use copy when determining sample points to leave original sample set unchanged
+    mu_star, var_star = temp_model.predict(x_star)
+    var = np.diag(var_star)
+    max_var = np.amax(var)
+    sample_points = np.empty([0, 2])    # store to-sample-points in here and return
+
+    while max_var > threshold:
+
+        # status update
+        print("Current max var: " + str(max_var) + " // Target threshold: " + str(threshold)) if log else None
+        print("Finding sample point: " + str(sample_points.shape[0] + 1)) if log else None
+
+        # determine next point to sample
+        argmax_var = x_star[np.argmax(var)]     # find point at which predictive variance is maximized
+        argmax_mu = mu_star[np.argmax(var)]     # use estimated mean value as sample value
+
+        # add point to to-be-sampled set
+        x_addition = np.array(argmax_var).reshape((1, -1))
+        sample_points = np.vstack((sample_points, x_addition))
+
+        # update temp model with new sample point, taking predicted mean to be the observed value
+        y_addition = np.array(argmax_mu).reshape((1, -1))
+        if isinstance(temp_model, SFGP):
+            temp_model.updt(x_addition, y_addition)
+        elif isinstance(temp_model, MFGP):
+            temp_model.updt_hifi(x_addition, y_addition)
+        else:
+            raise TypeError("Invalid model type: must be SFGP or MFGP")
+
+        # recompute prediction and continue adding points to reduce variance if necessary
+        mu_star, var_star = temp_model.predict(x_star)
+        var = np.diag(var_star)
+        max_var = np.amax(var)
+
+    # return sample points when temp model's maximum predictive variance is below threshold
+    return sample_points
+
+
+def compute_sample_clusters(agents, sample_points, positions):
+    pass
+
+
+def choi_threshold(var_star):
+    """
+    Given current predictive variance, determine threshold below which uncertainty should be reduced in this epoch of
+    Choi doubling algorithm.
+
+    :param var_star: [nxn numpy array] of cov(x,x') estimates of posterior variance (diagonal contains variances)
+    :return: [scalar] threshold value below which uncertainty should be reduced on this step
+    """
+    var = np.diag(var_star)
+    max_var = np.amax(var)
+    return max_var / 2
+
+
+def choi_double(epoch):
+    """
+    Given current epoch of Choi doubling algorithm, determine the number of iterations in this epoch
+    :param epoch: [scalar] current epoch of Choi doubling algorithm
+    :return: [scalar] number of iterations in this epoch
+    """
+    return 2**epoch
+
+
+#######################################################################################################################
+# Control Algorithms
+#######################################################################################################################
+
+
 def sfgp_todescato(sim_num, iterations, agents, positions, truth, prior, hyp, console, plotter, log):
     """
     Implement Algorithm 1 of Todescato et. al. "Multi-robots Gaussian estimation and coverage..." using a
@@ -583,6 +670,192 @@ def mfgp_todescato(sim_num, iterations, agents, positions, truth, prior, hyp, co
     return loss_log, agent_log, sample_log
 
 
+def mfgp_choi(sim_num, iterations, agents, positions, truth, prior, hyp, console, plotter, log):
+    """
+    Implement "switching" algorithm of Choi et. al.  "Swarm intelligence for achieving the global maximum..." with
+    a doubling trick inspired by Besson et. al. "What Doubling Tricks Can and Can't Do..."
+    Runs epochs of exponentially-growing length in which agents explore to reduce below an uncertainty threshold,
+    then exploit for the remainder of the epoch.
+
+    :param sim_num: [scalar] index number of current simulation (relevant when running multiple simulations)
+    :param iterations: [scalar] number of iterations to run simulation
+    :param agents: [scalar] number of agents being simulated
+    :param positions: [nAgentsx2 numpy array] of initial (x,y) points of agents
+    :param truth: [nx3 pandas DF] triples of (x,y,z=f(x,y)) where z=f is the ground truth function at each point
+    :param prior: [mx3 pandas DF] triples of (x,y,z~f(x,y)) where z~f is a low-fidelity prior estimate of the ground
+                  truth function at each point, and m << n such that the prior estimate is given only at a few points
+    :param hyp: [1x9 pandas DF] of log-scaled hyperparameters to use in MFGP model (9 is number of hyperparameters)
+                log-scaled hyp take the form [mu_lo, s^2_lo, L_lo, mu_hi, s^2_hi, L_hi, rho, noise_lo, noise_hi]
+    :param console: boolean indicating whether to display simulation progress on console
+    :param plotter: boolean indicating whether to plot simulation progress using plotter.py
+    :param log: boolean indicating whether to log simulation progress into CSV for performance analysis
+    :return: [3 value tuple] of
+        [list of dictionaries] log of loss by iteration
+        [list of dictionaries] log of agent positions and actions by iteration
+        [list of dictionaries] log of samples taken by agent over the course of simulation
+    """
+    print(line_break + "MFGP Choi" + line_break) if console else None
+
+    """
+    Outline
+    -Initialize models
+    -For each epoch
+        -Determine uncertainty threshold to reduce below given previous threshold
+        -Determine points to sample in order to reduce such uncertainty
+        -K-means cluster sample points
+        -TSP tour each cluster
+        -Exploit
+    """
+
+    # 0) Initialize logging lists and plotter
+    loss_log, agent_log, sample_log = [], [], [] if log else None
+    plotter.reset() if plotter else None
+
+    # 1) initialize MFGP model with hyperparameters and empty prior
+    model = init_MFGP(hyp, prior=None)
+
+    # 2) initialize arrays of x_star test points, y truth points, loss and bounding box of domain
+    truth_arr = np.vstack(truth.values.tolist())
+    x_star = truth_arr[:, [0, 1]]  # all rows, first two columns are X* gridded test points
+    y = truth_arr[:, [2]]  # all rows, third column is ground truth y points
+    bounding_box = np.array([np.amin(x_star[:, 0]), np.amax(x_star[:, 0]),
+                             np.amin(x_star[:, 1]), np.amax(x_star[:, 1])])  # [x_min, x_max, y_min, y_max]
+    loss = []
+
+    # 3) compute max predictive variance and keep as normalizing constant
+    mu_star, var_star = model.predict(x_star)
+    max_var_0 = np.amax(var_star)
+    print("Max Initial Predictive Variance: " + str(max_var_0)) if console else None
+
+    # 4) initialize MFGP model with prior and force-update model
+    model = init_MFGP(hyp, prior=prior)
+    model.updt_info(model.X_L, model.y_L, model.X_H, model.y_H)
+
+    # 5) initialize vars and begin iterative portion of algorithm
+    iteration = 0
+    epoch = 0
+
+    while iteration < iterations:
+
+        # 6) compute prediction and determine threshold below which to reduce uncertainty on this epoch
+        mu_star, var_star = model.predict(x_star)
+        max_var_t = np.amax(np.diag(var_star))
+        threshold = choi_threshold(var_star)
+
+        # 7) determine points to sample for explore portion of this epoch
+        sample_points = compute_sample_points(model, x_star, threshold, log)
+
+        # 8) k-means cluster points to sample for explore portion of this epoch (TODO)
+        sample_clusters = compute_sample_clusters(agents, sample_points, positions)
+
+        # 9) determine TSP tours through each cluster (TODO)
+
+        # 9) determine length of this explore-exploit epoch and execute epoch (TODO)
+        epoch_length = choi_double(epoch)
+        for step in epoch_length:
+            # execute explore-exploit step depending on sample tours (TODO)
+
+            # increment iteration count
+            iteration += 1
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    # # 6) begin iterative portion of algorithm
+    # for iteration in range(iterations):
+    #
+    #     # ensure all positions are valid: if not, break and investigate
+    #     if not in_box(positions, bounding_box).all():
+    #         print("Warning: out of bounds")
+    #
+    #     # 7) record samples from each agent on explore step (Todescato "Listen")
+    #     x_new = np.empty([0, 2])    # store new sample points
+    #     y_new = np.empty([0, 1])    # store new samples
+    #     id_new = np.empty([0, 1])   # store agent ids that sampled
+    #     for i in range(agents):
+    #         if explore_t[i] == 1:  # this robot is on an explore step: take sample
+    #             x_sample = positions[i, :]
+    #             sample_idx = np.logical_and(truth_arr[:, 0] == x_sample[0], truth_arr[:, 1] == x_sample[1])
+    #             y_sample = truth_arr[sample_idx, 2]  # retrieve f_val at matching point
+    #             print(f"Robot {i} explored {x_sample} and sampled {y_sample}") if console else None
+    #             x_new = np.vstack((x_new, x_sample))
+    #             y_new = np.vstack((y_new, y_sample))
+    #             id_new = np.vstack((id_new, i))
+    #         elif iteration > 0:     # 0th iteration is for initialization purposes only
+    #             print(f"Robot {i} exploited to {centroids_t[i, :]}") if console else None
+    #
+    #     # 8) update GP model and estimates (Todescato "Estimate update")
+    #     model.updt_hifi(x_new, y_new)
+    #     mu_star, var_star = model.predict(x_star)
+    #
+    #     # 9) compute loss given current positions
+    #     loss_vor = voronoi_bounded(positions, bounding_box)
+    #     loss_t = compute_loss(loss_vor, truth_arr)
+    #     loss.append(loss_t)
+    #
+    #     # 10) update partitions and centroids given current estimate (Todescato "Partition and centroids update")
+    #     if centroids_t.shape[0] != agents:
+    #         print("Error")
+    #     lloyd_vor = voronoi_bounded(centroids_t, bounding_box)
+    #     centroids_t = compute_centroids(lloyd_vor, x_star, mu_star)
+    #     if centroids_t.shape[0] != agents:
+    #         print("Error")
+    #
+    #     # 11) compute points of max variance and make explore/exploit decision (Todescato "Target-Points computation")
+    #     argmax_var_t, max_var_t = compute_max_var(lloyd_vor, truth_arr, var_star)
+    #     prob_explore_t = max_var_t / max_var_0
+    #     explore_t = np.array([random.random() < cutoff for cutoff in prob_explore_t])    # Bernoulli wrt prob_explore_t
+    #
+    #     # 12) print to console, update log, and plot for this iteration
+    #     if console:
+    #         print(f"\nIteration {iteration}")
+    #         print(f"Current loss: {loss_t}")
+    #         print(f"Max var by cell: {max_var_t.flatten()}")
+    #         print(f"Normalizing max var: {max_var_0}")
+    #         print(f"Probability of exploration: {prob_explore_t.flatten()}")
+    #         print(f"Decision of exploration: {explore_t.flatten()}")
+    #     if log:
+    #         loss_log.append({"SimNum": sim_num, "Iteration": iteration, "Loss": loss_t})
+    #         for i in range(agents):
+    #             agent_log.append({"SimNum": sim_num, "Iteration": iteration, "Agent": i,
+    #                               "X": positions[i, 0], "Y": positions[i, 1],
+    #                               "XMax": argmax_var_t[i, 0], "YMax": positions[i, 1],
+    #                               "VarMax": max_var_t[i, 0], "Var0": max_var_0,
+    #                               "XCentroid": centroids_t[i, 0], "YCentroid": centroids_t[i, 1],
+    #                               "ProbExplore": prob_explore_t[i, 0], "Explore": explore_t[i, 0]})
+    #         for i in range(id_new.size):
+    #             sample_log.append({"SimNum": sim_num, "Iteration": iteration, "Agent": id_new[i, 0],
+    #                                "X": x_new[i, 0], "Y": x_new[i, 1], "Sample": y_new[i, 0]})
+    #     if plotter:
+    #         plotter.plot_explore(prob_explore_t, explore_t)
+    #         plotter.plot_mean(x_star, mu_star)
+    #         plotter.plot_var(x_star, var_star)
+    #         plotter.plot_loss_vor(loss_vor, truth_arr, explore_t)
+    #         plotter.plot_loss(loss)
+    #         plotter.plot_lloyd_vor(lloyd_vor, centroids_t, truth_arr)
+    #         plotter.show()
+    #
+    #     # 13) update agent positions (Todescato "Target-Points transmission")
+    #     for i in range(agents):
+    #         if explore_t[i, 0]:
+    #             positions[i, :] = argmax_var_t[i, :]
+    #         else:
+    #             positions[i, :] = centroids_t[i, :]
+    #
+    # # 14) return log dictionary lists to driver function, which will save them into a dataframe
+    return loss_log, agent_log, sample_log
+
 if __name__ == "__main__":
     """
     Run a series of multiagent learning-coverage algorithm simulations.
@@ -618,7 +891,7 @@ if __name__ == "__main__":
 
         # 2) run simulation
         loss_log_t, agent_log_t, sample_log_t = \
-            sfgp_todescato(sim_num, iterations, agents, positions, truth, prior, sf_hyp, console, plotter, log)
+            mfgp_choi(sim_num, iterations, agents, positions, truth, prior, mf_hyp, console, plotter, log)
             # mfgp_todescato(sim_num, iterations, agents, positions, truth, prior, mf_hyp, console, plotter, log)
             # sfgp_todescato(sim_num, iterations, agents, positions, truth, prior, sf_hyp, console, plotter, log)
 

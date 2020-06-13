@@ -20,6 +20,7 @@ import cProfile
 import numpy as np
 import pandas as pd
 from scipy.spatial import Voronoi
+from scipy.cluster.vq import kmeans2
 import matplotlib.pyplot as plt
 from matplotlib import path
 from gaussian_process import MFGP, SFGP
@@ -368,7 +369,29 @@ def compute_sample_points(model, x_star, threshold, console):
 
 
 def compute_sample_clusters(agents, sample_points, positions):
-    pass
+    """
+    Given a set of points to sample and a set of current positions of agents, cluster sample points and assign
+    each agent to the cluster with nearest centroid. Utilized by Choi doubling algorithms.
+
+    :param agents: [scalar] number of agents in simulation
+    :param sample_points: [nx2 numpy array] of (x,y) pairs to be clustered
+    :param positions: [nAgentsx2 numpy array] of (x,y) pairs of current agent positions
+    :return: TODO
+    """
+    centroid, label = kmeans2(sample_points, k=agents, minit='random')
+    w0 = sample_points[label == 0]
+    w1 = sample_points[label == 1]
+    w2 = sample_points[label == 2]
+    w3 = sample_points[label == 3]
+    plt.plot(w0[:, 0], w0[:, 1], 'o', alpha=0.5, label='cluster 0')
+    plt.plot(w1[:, 0], w1[:, 1], 'd', alpha=0.5, label='cluster 1')
+    plt.plot(w2[:, 0], w2[:, 1], 's', alpha=0.5, label='cluster 2')
+    plt.plot(w3[:, 0], w3[:, 1], '+', alpha=0.5, label='cluster 3')
+    plt.plot(centroid[:, 0], centroid[:, 1], 'k*', label='centroids')
+    plt.plot(positions[:, 0], positions[:, 1], 'ko', label='positions')
+    plt.axis('equal')
+    plt.legend(shadow=True)
+    plt.show()
 
 
 def choi_threshold(var_star):
@@ -750,6 +773,7 @@ def mfgp_choi(sim_num, iterations, agents, positions, truth, prior, hyp, console
         sample_clusters = compute_sample_clusters(agents, sample_points, positions)
 
         # 9) determine TSP tours through each cluster (TODO)
+        # See https://towardsdatascience.com/solving-travelling-salesperson-problems-with-python-5de7e883d847
 
         # 9) determine length of this explore-exploit epoch and execute epoch (TODO)
         epoch_length = choi_double(epoch)

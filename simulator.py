@@ -20,7 +20,6 @@ import cProfile
 import numpy as np
 import pandas as pd
 from scipy.spatial import Voronoi
-from scipy.cluster.vq import kmeans2
 import matplotlib.pyplot as plt
 from matplotlib import path
 from gaussian_process import MFGP, SFGP
@@ -368,30 +367,51 @@ def compute_sample_points(model, x_star, threshold, console):
     return sample_points
 
 
-def compute_sample_clusters(agents, sample_points, positions):
+def compute_sample_clusters(vor, sample_points):
     """
-    Given a set of points to sample and a set of current positions of agents, cluster sample points and assign
-    each agent to the cluster with nearest centroid. Utilized by Choi doubling algorithms.
+    Given a set of points to sample and a bounded Voronoi diagram of the current Lloyd iteration of the agents,
+    determine which points fall in each Voronoi cell and assign these points to the agent owning that cell.
 
-    :param agents: [scalar] number of agents in simulation
-    :param sample_points: [nx2 numpy array] of (x,y) pairs to be clustered
-    :param positions: [nAgentsx2 numpy array] of (x,y) pairs of current agent positions
-    :return: TODO
+    :param vor: [scipy Voronoi object] bounded Voronoi partition seeded by
+                current agent configuration OR previous step's centroids (if implementing Lloyd),
+                with bounded points and regions specified in filtered_points and filtered_regions fields
+    :param sample_points: [nx2 numpy array] of (x,y) pairs at which samples must be taken
+    :return: [list of nx2 numpy arrays] where list entry i contains an nx2 numpy array of (x,y) pairs at which
+             samples must be taken by agent i (i.e., contains points inside of cell i)
     """
-    centroid, label = kmeans2(sample_points, k=agents, minit='random')
-    w0 = sample_points[label == 0]
-    w1 = sample_points[label == 1]
-    w2 = sample_points[label == 2]
-    w3 = sample_points[label == 3]
-    plt.plot(w0[:, 0], w0[:, 1], 'o', alpha=0.5, label='cluster 0')
-    plt.plot(w1[:, 0], w1[:, 1], 'd', alpha=0.5, label='cluster 1')
-    plt.plot(w2[:, 0], w2[:, 1], 's', alpha=0.5, label='cluster 2')
-    plt.plot(w3[:, 0], w3[:, 1], '+', alpha=0.5, label='cluster 3')
-    plt.plot(centroid[:, 0], centroid[:, 1], 'k*', label='centroids')
-    plt.plot(positions[:, 0], positions[:, 1], 'ko', label='positions')
-    plt.axis('equal')
-    plt.legend(shadow=True)
-    plt.show()
+    clusters = []
+
+    # 1) iterate over each cell in Voronoi partition and determine the sample points inside of this cell
+    for i, cell in enumerate(vor.filtered_regions):
+
+        # 2) select only the points in this cell from sample_points
+        vertices = vor.vertices[cell, :]
+        in_indices = in_polygon(sample_points[:, 0], sample_points[:, 1], vertices[:, 0], vertices[:, 1])
+        in_points = sample_points[in_indices, :]
+
+        # 3) save sample points inside of this cell into list
+        clusters.append(in_points)
+
+        plt.figure()                                        # debug sample point clusters
+        vertices = vor.vertices[cell + [cell[0]], :]
+        plt.plot(vertices[:, 0], vertices[:, 1], 'k-')
+        plt.plot(sample_points[:, 0], sample_points[:, 1], 'k+')
+        plt.plot(in_points[:, 0], in_points[:, 1], 'r+')
+        plt.show()
+
+    return clusters
+
+
+def compute_sample_tsp(clusters):
+    """
+    Given a set of sample points assigned to each agent, find a near-optimal TSP tour through the sample points
+    for each agent to follow.
+
+    :param clusters: [list of nx2 numpy arrays] where list entry i contains an nx2 numpy array of (x,y) pairs at which
+                     samples must be taken by agent i (i.e., i-th entry contains points to be sampled by agent i)
+    :return: [list of nx2 numpy arrays] where list entry i contains an nx2 numpy array of (x,y) pairs at which
+             samples must be taken by agent i, and each nx2 array is SORTED in optimal TSP order
+    """
 
 
 def choi_threshold(var_star):
@@ -758,6 +778,7 @@ def mfgp_choi(sim_num, iterations, agents, positions, truth, prior, hyp, console
     # 5) initialize vars and begin iterative portion of algorithm
     iteration = 0
     epoch = 0
+    centroids_t = positions
 
     while iteration < iterations:
 
@@ -766,13 +787,18 @@ def mfgp_choi(sim_num, iterations, agents, positions, truth, prior, hyp, console
         max_var_t = np.amax(np.diag(var_star))
         threshold = choi_threshold(var_star)
 
-        # 7) determine points to sample for explore portion of this epoch
+        # 7) update Lloyd iteration
+        lloyd_vor = voronoi_bounded(centroids_t, bounding_box)
+        centroids_t = compute_centroids(lloyd_vor, x_star, mu_star)
+
+        # 8) determine points to sample for explore portion of this epoch
         sample_points = compute_sample_points(model, x_star, threshold, console)
 
-        # 8) k-means cluster points to sample for explore portion of this epoch (TODO)
-        sample_clusters = compute_sample_clusters(agents, sample_points, positions)
+        # 9) k-means cluster points to sample for explore portion of this epoch (TODO)
+        sample_clusters = compute_sample_clusters(lloyd_vor, sample_points)
 
         # 9) determine TSP tours through each cluster (TODO)
+        tsp_tours = compute_sample_tsp(sample_clusters)
         # See https://towardsdatascience.com/solving-travelling-salesperson-problems-with-python-5de7e883d847
 
         # 9) determine length of this explore-exploit epoch and execute epoch (TODO)

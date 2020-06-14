@@ -24,6 +24,10 @@ import matplotlib.pyplot as plt
 from matplotlib import path
 from gaussian_process import MFGP, SFGP
 from plotter import Plotter
+import six
+sys.modules['sklearn.externals.six'] = six  # Workaround to import MLRose https://stackoverflow.com/a/62354885
+import mlrose
+
 
 """ Boundary cushion to be used in computations with and plots of unit square """
 eps = 0.1
@@ -99,7 +103,7 @@ def in_polygon(xq, yq, xv, yv):
     """
     Determines if query points (xq, yq) are contained in the polygon specified by (xv, yv)
     Translates Matlab inpolygon implementation described here: https://www.mathworks.com/help/matlab/ref/inpolygon.html
-    Retrieved from https://stackoverflow.com/a/49733403 May 23, 2020
+    Referenced https://stackoverflow.com/a/49733403 May 23, 2020
 
     :param xq: [nx1 numpy array] of query point x-coordinates
     :param yq: [nx1 numpy array] of query point y-coordinates
@@ -120,7 +124,7 @@ def in_polygon(xq, yq, xv, yv):
 def poly_area(x, y):
     """
     Implementation of the Shoelace formula to compute 2D polygonal area (https://en.wikipedia.org/wiki/Shoelace_formula)
-    Retrieved from https://stackoverflow.com/a/30408825 May 24, 2020
+    Referenced https://stackoverflow.com/a/30408825 May 24, 2020
 
     :param x: [nx1 numpy array] of x points defining polygon
     :param y: [nx1 numpy array] of y points defining polygon
@@ -132,7 +136,7 @@ def poly_area(x, y):
 def in_box(points, bounding_box):
     """
     Determine if a given set of 2D points is inside a given 2D bounding box
-    Retrieved from https://stackoverflow.com/a/33602171 May 23, 2020
+    Referenced https://stackoverflow.com/a/33602171 May 23, 2020
 
     :param points: [nx2 numpy array] of (x,y) points to be checked
     :param bounding_box: [1x4 numpy array] containing limits [x_min, x_max, y_min, y_max]
@@ -147,7 +151,7 @@ def in_box(points, bounding_box):
 def voronoi_bounded(points, bounding_box):
     """
     Compute 2D Voronoi partition bounded within a bounding_box
-    Retrieved from https://stackoverflow.com/a/33602171 May 23, 2020
+    Referenced https://stackoverflow.com/a/33602171 May 23, 2020
 
     :param points: [nx2 numpy array] of seed points around which to construct Voronoi diagram
     :param bounding_box: [1x4 numpy array] containing limits [x_min, x_max, y_min, y_max]
@@ -392,12 +396,12 @@ def compute_sample_clusters(vor, sample_points):
         # 3) save sample points inside of this cell into list
         clusters.append(in_points)
 
-        plt.figure()                                        # debug sample point clusters
-        vertices = vor.vertices[cell + [cell[0]], :]
-        plt.plot(vertices[:, 0], vertices[:, 1], 'k-')
-        plt.plot(sample_points[:, 0], sample_points[:, 1], 'k+')
-        plt.plot(in_points[:, 0], in_points[:, 1], 'r+')
-        plt.show()
+        # plt.figure()                                        # debug sample point clusters
+        # vertices = vor.vertices[cell + [cell[0]], :]
+        # plt.plot(vertices[:, 0], vertices[:, 1], 'k-')
+        # plt.plot(sample_points[:, 0], sample_points[:, 1], 'k+')
+        # plt.plot(in_points[:, 0], in_points[:, 1], 'r+')
+        # plt.show()
 
     return clusters
 
@@ -406,12 +410,39 @@ def compute_sample_tsp(clusters):
     """
     Given a set of sample points assigned to each agent, find a near-optimal TSP tour through the sample points
     for each agent to follow.
+    Ref. https://towardsdatascience.com/solving-travelling-salesperson-problems-with-python-5de7e883d847 June 14, 2020
 
     :param clusters: [list of nx2 numpy arrays] where list entry i contains an nx2 numpy array of (x,y) pairs at which
                      samples must be taken by agent i (i.e., i-th entry contains points to be sampled by agent i)
     :return: [list of nx2 numpy arrays] where list entry i contains an nx2 numpy array of (x,y) pairs at which
              samples must be taken by agent i, and each nx2 array is SORTED in optimal TSP order
     """
+    tours = []
+
+    # 1) iterate over each cluster of sample points
+    for i, cluster in enumerate(clusters):
+
+        # 2) compute a TSP tour through this cluster using MLRose
+        coords_list = [tuple(coord) for coord in cluster]               # convert numpy to list of tuples for mlrose
+        problem = mlrose.TSPOpt(length=len(coords_list),
+                                coords=coords_list, maximize=False)     # define optimization problem in mlrose
+        solution, fitness = mlrose.genetic_alg(problem, random_state=2)     # compute TSP tour
+
+        # 3) rearrange cluster points according to tour and save in tours
+        tour = cluster[solution]        # solution holds indices of points in optimal order
+        tours.append(tour)
+
+        print(f"TSP {i}: Tour {tour} // Cost {fitness}")        # debug TSP tour for this cluster
+        plt.figure()
+        plt.plot(tour[:, 0], tour[:, 1], 'k-')
+        plt.plot(tour[:, 0], tour[:, 1], 'k+')
+        for j in range(len(tour)):
+            plt.annotate(s=j, xy=(tour[j, 0], tour[j, 1]))
+        plt.xlim((-0.1, 1.1))
+        plt.ylim((-0.1, 1.1))
+        plt.show()
+
+    return tours
 
 
 def choi_threshold(var_star):
@@ -794,12 +825,11 @@ def mfgp_choi(sim_num, iterations, agents, positions, truth, prior, hyp, console
         # 8) determine points to sample for explore portion of this epoch
         sample_points = compute_sample_points(model, x_star, threshold, console)
 
-        # 9) k-means cluster points to sample for explore portion of this epoch (TODO)
+        # 9) k-means cluster points to sample for explore portion of this epoch
         sample_clusters = compute_sample_clusters(lloyd_vor, sample_points)
 
-        # 9) determine TSP tours through each cluster (TODO)
-        tsp_tours = compute_sample_tsp(sample_clusters)
-        # See https://towardsdatascience.com/solving-travelling-salesperson-problems-with-python-5de7e883d847
+        # 9) determine TSP tours through each cluster
+        tsp_tours = compute_sample_tsp(sample_clusters) #TODO: effectively plot TSP tours
 
         # 9) determine length of this explore-exploit epoch and execute epoch (TODO)
         epoch_length = choi_double(epoch)

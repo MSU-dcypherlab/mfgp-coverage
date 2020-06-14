@@ -422,32 +422,34 @@ def compute_sample_tsp(clusters):
     # 1) iterate over each cluster of sample points
     for i, cluster in enumerate(clusters):
 
-        # 2) compute a TSP tour through this cluster using MLRose
-        coords_list = [tuple(coord) for coord in cluster]               # convert numpy to list of tuples for mlrose
-        problem = mlrose.TSPOpt(length=len(coords_list),
-                                coords=coords_list, maximize=False)     # define optimization problem in mlrose
-        solution, fitness = mlrose.genetic_alg(problem, random_state=2)     # compute TSP tour
+        tour = np.empty((0, 2))
+        if cluster.shape[0] > 0:
+            # 2) compute a TSP tour through this non-empty cluster using MLRose
+            coords_list = [tuple(coord) for coord in cluster]               # convert numpy to list of tuples for mlrose
+            problem = mlrose.TSPOpt(length=len(coords_list),
+                                    coords=coords_list, maximize=False)     # define optimization problem in mlrose
+            solution, fitness = mlrose.genetic_alg(problem, random_state=2)     # compute TSP tour
 
-        # 3) rearrange cluster points according to tour and save in tours
-        tour = cluster[solution]        # solution holds indices of points in optimal order
+            # 3) rearrange cluster points according to tour and save in tours
+            tour = cluster[solution]        # solution holds indices of points in optimal order
         tours.append(tour)
 
-        print(f"TSP {i}: Tour {tour} // Cost {fitness}")        # debug TSP tour for this cluster
-        plt.figure()
-        plt.plot(tour[:, 0], tour[:, 1], 'k-')
-        plt.plot(tour[:, 0], tour[:, 1], 'k+')
-        for j in range(len(tour)):
-            plt.annotate(s=j, xy=(tour[j, 0], tour[j, 1]))
-        plt.xlim((-0.1, 1.1))
-        plt.ylim((-0.1, 1.1))
-        plt.show()
+        # print(f"TSP {i}: Tour {tour} // Cost {fitness}")        # debug TSP tour for this cluster
+        # plt.figure()
+        # plt.plot(tour[:, 0], tour[:, 1], 'k-')
+        # plt.plot(tour[:, 0], tour[:, 1], 'k+')
+        # for j in range(len(tour)):
+        #     plt.annotate(s=j, xy=(tour[j, 0], tour[j, 1]))
+        # plt.xlim((-0.1, 1.1))
+        # plt.ylim((-0.1, 1.1))
+        # plt.show()
 
     return tours
 
 
 def choi_threshold(var_star):
     """
-    Given current predictive variance, determine threshold below which uncertainty should be reduced in this epoch of
+    Given current predictive variance, determine threshold below which uncertainty should be reduced in this period of
     Choi doubling algorithm.
 
     :param var_star: [nxn numpy array] of cov(x,x') estimates of posterior variance (diagonal contains variances)
@@ -458,13 +460,15 @@ def choi_threshold(var_star):
     return max_var / 2
 
 
-def choi_double(epoch):
+def choi_double(period):
     """
-    Given current epoch of Choi doubling algorithm, determine the number of iterations in this epoch
-    :param epoch: [scalar] current epoch of Choi doubling algorithm
-    :return: [scalar] number of iterations in this epoch
+    Given current period of Choi doubling algorithm, determine the number of iterations in this period
+    Begin with 10 iterations in first period, and double for all subsequent periods.
+
+    :param period: [scalar] current period of Choi doubling algorithm
+    :return: [scalar] number of iterations in this period
     """
-    return 2**epoch
+    return 10*2**period
 
 
 #######################################################################################################################
@@ -526,6 +530,7 @@ def sfgp_todescato(sim_num, iterations, agents, positions, truth, prior, hyp, co
     prob_explore_t = max_var_t / max_var_0 * np.ones((agents, 1))
     explore_t = np.zeros((agents, 1))   # initialize to zero so agents do not sample on first iteration
     centroids_t = positions     # initialize centroids governing Lloyd iterations to current positions
+    period = 0                  # irrelevant in this simulation, but necessary for logging consistency
 
     # 6) begin iterative portion of algorithm
     for iteration in range(iterations):
@@ -559,31 +564,31 @@ def sfgp_todescato(sim_num, iterations, agents, positions, truth, prior, hyp, co
         lloyd_vor = voronoi_bounded(centroids_t, bounding_box)
         centroids_t = compute_centroids(lloyd_vor, x_star, mu_star)
 
-        # 11) compute points of max variance and make explore/exploit decision (Todescato "Target-Points computation")
+        # 11) compute points of max variance
         argmax_var_t, max_var_t = compute_max_var(lloyd_vor, truth_arr, var_star)
-        prob_explore_t = max_var_t / max_var_0
-        explore_t = np.array([random.random() < cutoff for cutoff in prob_explore_t])    # Bernoulli wrt prob_explore_t
 
         # 12) print to console, update log, and plot for this iteration
+        # (note: period is logged in all simulations for consistency, and DOES apply here)
         if console:
             print(f"\nIteration {iteration}")
+            print(f"Period {period}")
             print(f"Current loss: {loss_t}")
             print(f"Max var by cell: {max_var_t.flatten()}")
             print(f"Normalizing max var: {max_var_0}")
             print(f"Probability of exploration: {prob_explore_t.flatten()}")
             print(f"Decision of exploration: {explore_t.flatten()}")
         if log:
-            loss_log.append({"SimNum": sim_num, "Iteration": iteration, "Loss": loss_t})
+            loss_log.append({"SimNum": sim_num, "Iteration": iteration, "Period": period, "Loss": loss_t})
             for i in range(agents):
-                agent_log.append({"SimNum": sim_num, "Iteration": iteration, "Agent": i,
+                agent_log.append({"SimNum": sim_num, "Iteration": iteration, "Period": period, "Agent": i,
                                   "X": positions[i, 0], "Y": positions[i, 1],
                                   "XMax": argmax_var_t[i, 0], "YMax": positions[i, 1],
                                   "VarMax": max_var_t[i, 0], "Var0": max_var_0,
                                   "XCentroid": centroids_t[i, 0], "YCentroid": centroids_t[i, 1],
                                   "ProbExplore": prob_explore_t[i, 0], "Explore": explore_t[i, 0]})
             for i in range(id_new.size):
-                sample_log.append({"SimNum": sim_num, "Iteration": iteration, "Agent": id_new[i, 0],
-                                   "X": x_new[i, 0], "Y": x_new[i, 1], "Sample": y_new[i, 0]})
+                sample_log.append({"SimNum": sim_num, "Iteration": iteration, "Period": period,
+                                   "Agent": id_new[i, 0], "X": x_new[i, 0], "Y": x_new[i, 1], "Sample": y_new[i, 0]})
         if plotter:
             plotter.plot_explore(prob_explore_t, explore_t)
             plotter.plot_mean(x_star, mu_star)
@@ -593,14 +598,18 @@ def sfgp_todescato(sim_num, iterations, agents, positions, truth, prior, hyp, co
             plotter.plot_lloyd_vor(lloyd_vor, centroids_t, truth_arr)
             plotter.show()
 
-        # 13) update agent positions (Todescato "Target-Points transmission")
+        # 13) based on max variance, make next iteration's explore/exploit decision
+        prob_explore_t = max_var_t / max_var_0
+        explore_t = np.array([random.random() < cutoff for cutoff in prob_explore_t])  # Bernoulli wrt prob_explore_t
+
+        # 14) update agent positions (Todescato "Target-Points transmission")
         for i in range(agents):
             if explore_t[i, 0]:
                 positions[i, :] = argmax_var_t[i, :]
             else:
                 positions[i, :] = centroids_t[i, :]
 
-    # 14) return log dictionary lists to driver function, which will save them into a dataframe
+    # 15) return log dictionary lists to driver function, which will save them into a dataframe
     return loss_log, agent_log, sample_log
 
 
@@ -659,6 +668,7 @@ def mfgp_todescato(sim_num, iterations, agents, positions, truth, prior, hyp, co
     prob_explore_t = max_var_t / max_var_0 * np.ones((agents, 1))
     explore_t = np.zeros((agents, 1))   # initialize to zero so agents do not sample on first iteration
     centroids_t = positions     # initialize centroids governing Lloyd iterations to current positions
+    period = 0                  # irrelevant in this simulation, but necessary for logging consistency
 
     # 6) begin iterative portion of algorithm
     for iteration in range(iterations):
@@ -700,31 +710,31 @@ def mfgp_todescato(sim_num, iterations, agents, positions, truth, prior, hyp, co
         if centroids_t.shape[0] != agents:
             print("Error")
 
-        # 11) compute points of max variance and make explore/exploit decision (Todescato "Target-Points computation")
+        # 11) compute points of max variance
         argmax_var_t, max_var_t = compute_max_var(lloyd_vor, truth_arr, var_star)
-        prob_explore_t = max_var_t / max_var_0
-        explore_t = np.array([random.random() < cutoff for cutoff in prob_explore_t])    # Bernoulli wrt prob_explore_t
 
         # 12) print to console, update log, and plot for this iteration
+        # (note: period is logged in all simulations for consistency, and DOES apply here)
         if console:
             print(f"\nIteration {iteration}")
+            print(f"Period {period}")
             print(f"Current loss: {loss_t}")
             print(f"Max var by cell: {max_var_t.flatten()}")
             print(f"Normalizing max var: {max_var_0}")
             print(f"Probability of exploration: {prob_explore_t.flatten()}")
             print(f"Decision of exploration: {explore_t.flatten()}")
         if log:
-            loss_log.append({"SimNum": sim_num, "Iteration": iteration, "Loss": loss_t})
+            loss_log.append({"SimNum": sim_num, "Iteration": iteration, "Period": period, "Loss": loss_t})
             for i in range(agents):
-                agent_log.append({"SimNum": sim_num, "Iteration": iteration, "Agent": i,
+                agent_log.append({"SimNum": sim_num, "Iteration": iteration, "Period": period, "Agent": i,
                                   "X": positions[i, 0], "Y": positions[i, 1],
                                   "XMax": argmax_var_t[i, 0], "YMax": positions[i, 1],
                                   "VarMax": max_var_t[i, 0], "Var0": max_var_0,
                                   "XCentroid": centroids_t[i, 0], "YCentroid": centroids_t[i, 1],
                                   "ProbExplore": prob_explore_t[i, 0], "Explore": explore_t[i, 0]})
             for i in range(id_new.size):
-                sample_log.append({"SimNum": sim_num, "Iteration": iteration, "Agent": id_new[i, 0],
-                                   "X": x_new[i, 0], "Y": x_new[i, 1], "Sample": y_new[i, 0]})
+                sample_log.append({"SimNum": sim_num, "Iteration": iteration, "Period": period,
+                                   "Agent": id_new[i, 0], "X": x_new[i, 0], "Y": x_new[i, 1], "Sample": y_new[i, 0]})
         if plotter:
             plotter.plot_explore(prob_explore_t, explore_t)
             plotter.plot_mean(x_star, mu_star)
@@ -734,23 +744,29 @@ def mfgp_todescato(sim_num, iterations, agents, positions, truth, prior, hyp, co
             plotter.plot_lloyd_vor(lloyd_vor, centroids_t, truth_arr)
             plotter.show()
 
-        # 13) update agent positions (Todescato "Target-Points transmission")
+        # 13) based on max variance, make next iteration's explore/exploit decision
+        prob_explore_t = max_var_t / max_var_0
+        explore_t = np.array([random.random() < cutoff for cutoff in prob_explore_t])  # Bernoulli wrt prob_explore_t
+
+        # 14) update agent positions (Todescato "Target-Points transmission")
         for i in range(agents):
             if explore_t[i, 0]:
                 positions[i, :] = argmax_var_t[i, :]
             else:
                 positions[i, :] = centroids_t[i, :]
 
-    # 14) return log dictionary lists to driver function, which will save them into a dataframe
+    # 15) return log dictionary lists to driver function, which will save them into a dataframe
     return loss_log, agent_log, sample_log
 
-
+# TODO: what happens when a cell has no points to TSP tour?
+# TODO: condense MFGP and SFGP algos into ONE algo with isinstance
+# TODO: determine distance traveled on each iteration as alternative cost metric
 def mfgp_choi(sim_num, iterations, agents, positions, truth, prior, hyp, console, plotter, log):
     """
     Implement "switching" algorithm of Choi et. al.  "Swarm intelligence for achieving the global maximum..." with
     a doubling trick inspired by Besson et. al. "What Doubling Tricks Can and Can't Do..."
-    Runs epochs of exponentially-growing length in which agents explore to reduce below an uncertainty threshold,
-    then exploit for the remainder of the epoch.
+    Runs periods of exponentially-growing length in which agents explore to reduce below an uncertainty threshold,
+    then exploit for the remainder of the period.
 
     :param sim_num: [scalar] index number of current simulation (relevant when running multiple simulations)
     :param iterations: [scalar] number of iterations to run simulation
@@ -770,17 +786,6 @@ def mfgp_choi(sim_num, iterations, agents, positions, truth, prior, hyp, console
         [list of dictionaries] log of samples taken by agent over the course of simulation
     """
     print(line_break + "MFGP Choi" + line_break) if console else None
-
-    """
-    Outline
-    -Initialize models
-    -For each epoch
-        -Determine uncertainty threshold to reduce below given previous threshold
-        -Determine points to sample in order to reduce such uncertainty
-        -K-means cluster sample points
-        -TSP tour each cluster
-        -Exploit
-    """
 
     # 0) Initialize logging lists and plotter
     loss_log, agent_log, sample_log = [], [], [] if log else None
@@ -808,133 +813,131 @@ def mfgp_choi(sim_num, iterations, agents, positions, truth, prior, hyp, console
 
     # 5) initialize vars and begin iterative portion of algorithm
     iteration = 0
-    epoch = 0
+    period = 0
     centroids_t = positions
+    prob_explore_t = np.zeros((agents, 1))      # unnecessary for this algorithm, but keep for logging consistency
+    explore_t = np.zeros((agents, 1))
 
     while iteration < iterations:
 
-        # 6) compute prediction and determine threshold below which to reduce uncertainty on this epoch
+        # 6) compute prediction and determine threshold below which to reduce uncertainty on this period
         mu_star, var_star = model.predict(x_star)
         max_var_t = np.amax(np.diag(var_star))
         threshold = choi_threshold(var_star)
 
-        # 7) update Lloyd iteration
-        lloyd_vor = voronoi_bounded(centroids_t, bounding_box)
-        centroids_t = compute_centroids(lloyd_vor, x_star, mu_star)
+        # 7) determine partition for each robot to explore based on current Lloyd iteration
+        sample_vor = voronoi_bounded(centroids_t, bounding_box)
 
-        # 8) determine points to sample for explore portion of this epoch
+        # 8) determine points to sample for explore portion of this period
         sample_points = compute_sample_points(model, x_star, threshold, console)
 
-        # 9) k-means cluster points to sample for explore portion of this epoch
-        sample_clusters = compute_sample_clusters(lloyd_vor, sample_points)
+        # 9) k-means cluster points to sample for explore portion of this period
+        sample_clusters = compute_sample_clusters(sample_vor, sample_points)
 
         # 9) determine TSP tours through each cluster
-        tsp_tours = compute_sample_tsp(sample_clusters) #TODO: effectively plot TSP tours
+        tsp_tours_t = compute_sample_tsp(sample_clusters)   # dynamic list of tours which updates as agents take samples
+        tsp_tours_0 = copy.deepcopy(tsp_tours_t)            # static list of complete tours for this period
 
-        # 9) determine length of this explore-exploit epoch and execute epoch (TODO)
-        epoch_length = choi_double(epoch)
-        for step in epoch_length:
-            # execute explore-exploit step depending on sample tours (TODO)
+        # 9) determine length of this explore-then-exploit period and execute period
+        period_length = choi_double(period)
+        for step in range(period_length):
 
-            # increment iteration count
+            # ensure all positions are valid: if not, break and investigate
+            if not in_box(positions, bounding_box).all():
+                print("Warning: out of bounds")
+
+            # 7) record samples from each agent on an explore step (i.e., on a TSP tour)
+            x_new = np.empty([0, 2])    # store new sample points
+            y_new = np.empty([0, 1])    # store new samples
+            id_new = np.empty([0, 1])   # store agent ids that sampled
+            for i in range(agents):
+                if explore_t[i] == 1:   # this robot is on an explore step/TSP tour: take sample
+                    x_sample = positions[i, :]
+                    sample_idx = np.logical_and(truth_arr[:, 0] == x_sample[0], truth_arr[:, 1] == x_sample[1])
+                    y_sample = truth_arr[sample_idx, 2]  # retrieve f_val at matching point
+                    print(f"Robot {i} explored {x_sample} and sampled {y_sample}") if console else None
+                    x_new = np.vstack((x_new, x_sample))
+                    y_new = np.vstack((y_new, y_sample))
+                    id_new = np.vstack((id_new, i))
+                elif iteration > 0:     # 0th iteration is for initialization purposes only
+                    print(f"Robot {i} exploited to {centroids_t[i, :]}") if console else None
+
+            # 8) update GP model and estimates (Todescato "Estimate update")
+            model.updt_hifi(x_new, y_new)
+            mu_star, var_star = model.predict(x_star)
+
+            # 9) compute loss given current positions
+            loss_vor = voronoi_bounded(positions, bounding_box)
+            loss_t = compute_loss(loss_vor, truth_arr)
+            loss.append(loss_t)
+
+            # 10) update partitions and centroids using Lloyd iteration given current estimate
+            if centroids_t.shape[0] != agents:
+                print("Error")
+            lloyd_vor = voronoi_bounded(centroids_t, bounding_box)
+            centroids_t = compute_centroids(lloyd_vor, x_star, mu_star)
+            if centroids_t.shape[0] != agents:
+                print("Error")
+
+            # 11) update status of learning progress (not necessary for decision, but useful for logging)
+            argmax_var_t, max_var_t = compute_max_var(lloyd_vor, truth_arr, var_star)
+
+            # 12) print to console, update log, and plot for this iteration
+            # (note: period is logged in all simulations for consistency, and DOES apply here)
+            if console:
+                print(f"\nIteration {iteration}")
+                print(f"Period {period}")
+                print(f"Current loss: {loss_t}")
+                print(f"Max var by cell: {max_var_t.flatten()}")
+                print(f"Normalizing max var: {max_var_0}")
+                print(f"Probability of exploration: {prob_explore_t.flatten()}")
+                print(f"Decision of exploration: {explore_t.flatten()}")
+            if log:
+                loss_log.append({"SimNum": sim_num, "Iteration": iteration, "Period": period, "Loss": loss_t})
+                for i in range(agents):
+                    agent_log.append({"SimNum": sim_num, "Iteration": iteration, "Period": period, "Agent": i,
+                                      "X": positions[i, 0], "Y": positions[i, 1],
+                                      "XMax": argmax_var_t[i, 0], "YMax": positions[i, 1],
+                                      "VarMax": max_var_t[i, 0], "Var0": max_var_0,
+                                      "XCentroid": centroids_t[i, 0], "YCentroid": centroids_t[i, 1],
+                                      "ProbExplore": prob_explore_t[i, 0], "Explore": explore_t[i, 0]})
+                for i in range(id_new.size):
+                    sample_log.append({"SimNum": sim_num, "Iteration": iteration, "Period": period,
+                                      "Agent": id_new[i, 0], "X": x_new[i, 0], "Y": x_new[i, 1], "Sample": y_new[i, 0]})
+            if plotter:
+                plotter.plot_explore(prob_explore_t, explore_t)
+                plotter.plot_mean(x_star, mu_star)
+                plotter.plot_var(x_star, var_star)
+                plotter.plot_tsp(sample_vor, tsp_tours_0, tsp_tours_t)     # plot current and original TSP tours
+                plotter.plot_loss_vor(loss_vor, truth_arr, explore_t)
+                plotter.plot_loss(loss)
+                plotter.plot_lloyd_vor(lloyd_vor, centroids_t, truth_arr)
+                plotter.show()
+
+            # 13) make explore/exploit decision depending on remaining points in TSP tour for each agent
+            for i in range(agents):
+                if tsp_tours_t[i].shape[0] > 0:  # this agent still has points to sample from in TSP tour
+                    prob_explore_t[i] = 1
+                    explore_t[i] = True
+                else:  # this agent is done sampling all points in this period's TSP tour
+                    prob_explore_t[i] = 0
+                    explore_t[i] = False
+
+            # 14) update agent positions and delete points from TSP tour as we go (all points remain in tsp_tour_0)
+            for i in range(agents):
+                if explore_t[i, 0]:     # take next point in TSP tour, then remove it from the tour
+                    positions[i, :] = tsp_tours_t[i][0, :]    # next destination is first point in i-th TSP tour
+                    tsp_tours_t[i] = np.delete(tsp_tours_t[i], 0, axis=0)   # delete first row of i-th TSP tour
+                else:                   # go to centroid of Lloyd cell
+                    positions[i, :] = centroids_t[i, :]
+
+            # 15) increment outer iteration count as we execute each period step
             iteration += 1
 
+        # 16) increment period counter to continue doubling trick
+        period += 1
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-    # # 6) begin iterative portion of algorithm
-    # for iteration in range(iterations):
-    #
-    #     # ensure all positions are valid: if not, break and investigate
-    #     if not in_box(positions, bounding_box).all():
-    #         print("Warning: out of bounds")
-    #
-    #     # 7) record samples from each agent on explore step (Todescato "Listen")
-    #     x_new = np.empty([0, 2])    # store new sample points
-    #     y_new = np.empty([0, 1])    # store new samples
-    #     id_new = np.empty([0, 1])   # store agent ids that sampled
-    #     for i in range(agents):
-    #         if explore_t[i] == 1:  # this robot is on an explore step: take sample
-    #             x_sample = positions[i, :]
-    #             sample_idx = np.logical_and(truth_arr[:, 0] == x_sample[0], truth_arr[:, 1] == x_sample[1])
-    #             y_sample = truth_arr[sample_idx, 2]  # retrieve f_val at matching point
-    #             print(f"Robot {i} explored {x_sample} and sampled {y_sample}") if console else None
-    #             x_new = np.vstack((x_new, x_sample))
-    #             y_new = np.vstack((y_new, y_sample))
-    #             id_new = np.vstack((id_new, i))
-    #         elif iteration > 0:     # 0th iteration is for initialization purposes only
-    #             print(f"Robot {i} exploited to {centroids_t[i, :]}") if console else None
-    #
-    #     # 8) update GP model and estimates (Todescato "Estimate update")
-    #     model.updt_hifi(x_new, y_new)
-    #     mu_star, var_star = model.predict(x_star)
-    #
-    #     # 9) compute loss given current positions
-    #     loss_vor = voronoi_bounded(positions, bounding_box)
-    #     loss_t = compute_loss(loss_vor, truth_arr)
-    #     loss.append(loss_t)
-    #
-    #     # 10) update partitions and centroids given current estimate (Todescato "Partition and centroids update")
-    #     if centroids_t.shape[0] != agents:
-    #         print("Error")
-    #     lloyd_vor = voronoi_bounded(centroids_t, bounding_box)
-    #     centroids_t = compute_centroids(lloyd_vor, x_star, mu_star)
-    #     if centroids_t.shape[0] != agents:
-    #         print("Error")
-    #
-    #     # 11) compute points of max variance and make explore/exploit decision (Todescato "Target-Points computation")
-    #     argmax_var_t, max_var_t = compute_max_var(lloyd_vor, truth_arr, var_star)
-    #     prob_explore_t = max_var_t / max_var_0
-    #     explore_t = np.array([random.random() < cutoff for cutoff in prob_explore_t])    # Bernoulli wrt prob_explore_t
-    #
-    #     # 12) print to console, update log, and plot for this iteration
-    #     if console:
-    #         print(f"\nIteration {iteration}")
-    #         print(f"Current loss: {loss_t}")
-    #         print(f"Max var by cell: {max_var_t.flatten()}")
-    #         print(f"Normalizing max var: {max_var_0}")
-    #         print(f"Probability of exploration: {prob_explore_t.flatten()}")
-    #         print(f"Decision of exploration: {explore_t.flatten()}")
-    #     if log:
-    #         loss_log.append({"SimNum": sim_num, "Iteration": iteration, "Loss": loss_t})
-    #         for i in range(agents):
-    #             agent_log.append({"SimNum": sim_num, "Iteration": iteration, "Agent": i,
-    #                               "X": positions[i, 0], "Y": positions[i, 1],
-    #                               "XMax": argmax_var_t[i, 0], "YMax": positions[i, 1],
-    #                               "VarMax": max_var_t[i, 0], "Var0": max_var_0,
-    #                               "XCentroid": centroids_t[i, 0], "YCentroid": centroids_t[i, 1],
-    #                               "ProbExplore": prob_explore_t[i, 0], "Explore": explore_t[i, 0]})
-    #         for i in range(id_new.size):
-    #             sample_log.append({"SimNum": sim_num, "Iteration": iteration, "Agent": id_new[i, 0],
-    #                                "X": x_new[i, 0], "Y": x_new[i, 1], "Sample": y_new[i, 0]})
-    #     if plotter:
-    #         plotter.plot_explore(prob_explore_t, explore_t)
-    #         plotter.plot_mean(x_star, mu_star)
-    #         plotter.plot_var(x_star, var_star)
-    #         plotter.plot_loss_vor(loss_vor, truth_arr, explore_t)
-    #         plotter.plot_loss(loss)
-    #         plotter.plot_lloyd_vor(lloyd_vor, centroids_t, truth_arr)
-    #         plotter.show()
-    #
-    #     # 13) update agent positions (Todescato "Target-Points transmission")
-    #     for i in range(agents):
-    #         if explore_t[i, 0]:
-    #             positions[i, :] = argmax_var_t[i, :]
-    #         else:
-    #             positions[i, :] = centroids_t[i, :]
-    #
-    # # 14) return log dictionary lists to driver function, which will save them into a dataframe
+    # 17) return log dictionary lists to driver function, which will save them into a dataframe
     return loss_log, agent_log, sample_log
 
 if __name__ == "__main__":
@@ -973,6 +976,7 @@ if __name__ == "__main__":
         # 2) run simulation
         loss_log_t, agent_log_t, sample_log_t = \
             mfgp_choi(sim_num, iterations, agents, positions, truth, prior, mf_hyp, console, plotter, log)
+            # mfgp_choi(sim_num, iterations, agents, positions, truth, prior, mf_hyp, console, plotter, log)
             # mfgp_todescato(sim_num, iterations, agents, positions, truth, prior, mf_hyp, console, plotter, log)
             # sfgp_todescato(sim_num, iterations, agents, positions, truth, prior, sf_hyp, console, plotter, log)
 

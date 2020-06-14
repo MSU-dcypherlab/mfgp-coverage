@@ -25,6 +25,7 @@ class Plotter:
         self.Bounds = bounding_box
         self.Iteration = 0
         self.Iterations = [0]
+        self.Epsilon = 0.05
 
         self.LloydAx = self.Fig.add_subplot(3, 2, 1)
         self.LloydAx.set_title("Lloyd Iteration")
@@ -165,6 +166,38 @@ class Plotter:
         self.VarAx.set_title("Posterior Var")
 
         self.VarAx.scatter(x_star[:, 0], x_star[:, 1], c=var)
+
+    def plot_tsp(self, vor, tours_0, tours_t):
+        """
+        Plot TSP tour to be executed by each agent, along with the Voronoi cell each TSP tour is contained within.
+        Note that the Voronoi cells correspond to the Lloyd cells when the current period started.
+        Plot atop variance axes since variance reduction drives exploration strategy.
+
+        :param vor: [scipy Voronoi object] Voronoi partition containing each TSP tour
+        :param tours_0: [list of nx2 numpy arrays] where i-th entry is ordered array of points of i-th agent's TSP tour;
+                        this is the original (static) list of tours containing all sample points for this period
+        :param tours_t: [list of nx2 numpy arrays] where i-th entry is ordered array of points of i-th agent's TSP tour;
+                        this is the updating (dynamic) list of tours containing only points not yet sampled
+        :return: None
+        """
+        # plot Voronoi cells containing each TSP tour
+        for region in vor.filtered_regions:
+            vertices = vor.vertices[region + [region[0]], :]
+            self.VarAx.plot(vertices[:, 0], vertices[:, 1], 'w-')
+
+        # plot each TSP tour
+        for i in range(len(tours_0)):
+            tour_0, tour_t = tours_0[i], tours_t[i]
+
+            # plot original (complete) tour in black
+            self.VarAx.plot(tour_0[:, 0], tour_0[:, 1], 'k--')
+            self.VarAx.plot(tour_0[:, 0], tour_0[:, 1], 'ko')
+            for j in range(len(tour_0)):
+                self.VarAx.annotate(s=j, xy=(tour_0[j, 0] + self.Epsilon, tour_0[j, 1] + self.Epsilon), c='r')
+
+            # plot current (points still remaining) tour in red
+            self.VarAx.plot(tour_t[:, 0], tour_t[:, 1], 'r--')
+            self.VarAx.plot(tour_t[:, 0], tour_t[:, 1], 'ro')
 
     def plot_explore(self, prob_explore, explore):
         """

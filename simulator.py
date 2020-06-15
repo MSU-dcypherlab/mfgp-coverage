@@ -428,7 +428,8 @@ def compute_sample_tsp(clusters):
             coords_list = [tuple(coord) for coord in cluster]               # convert numpy to list of tuples for mlrose
             problem = mlrose.TSPOpt(length=len(coords_list),
                                     coords=coords_list, maximize=False)     # define optimization problem in mlrose
-            solution, fitness = mlrose.genetic_alg(problem, random_state=2)     # compute TSP tour
+            solution, fitness = mlrose.genetic_alg(problem, mutation_prob=0.2,
+                                                   max_attempts=100, random_state=2)     # compute TSP tour
 
             # 3) rearrange cluster points according to tour and save in tours
             tour = cluster[solution]        # solution holds indices of points in optimal order
@@ -463,12 +464,12 @@ def choi_threshold(var_star):
 def choi_double(period):
     """
     Given current period of Choi doubling algorithm, determine the number of iterations in this period
-    Begin with 10 iterations in first period, and double for all subsequent periods.
+    Begin with 5 iterations in first period, and double for all subsequent periods.
 
     :param period: [scalar] current period of Choi doubling algorithm
     :return: [scalar] number of iterations in this period
     """
-    return 10*2**period
+    return 5*2**period
 
 
 #######################################################################################################################
@@ -476,10 +477,11 @@ def choi_double(period):
 #######################################################################################################################
 
 
-def sfgp_todescato(sim_num, iterations, agents, positions, truth, prior, hyp, console, plotter, log):
+def todescato(sim_num, iterations, agents, positions, truth, prior, hyp, console, plotter, log):
     """
     Implement Algorithm 1 of Todescato et. al. "Multi-robots Gaussian estimation and coverage..." using a
-    single-fidelity GP model
+    single-fidelity GP model.
+    Support single-fidelity and multi-fidelity models; model choice depends on hyperparameters passed in.
 
     :param sim_num: [scalar] index number of current simulation (relevant when running multiple simulations)
     :param iterations: [scalar] number of iterations to run simulation
@@ -488,145 +490,11 @@ def sfgp_todescato(sim_num, iterations, agents, positions, truth, prior, hyp, co
     :param truth: [nx3 pandas DF] triples of (x,y,z=f(x,y)) where z=f is the ground truth function at each point
     :param prior: [mx3 pandas DF] triples of (x,y,z~f(x,y)) where z~f is a low-fidelity prior estimate of the ground
                   truth function at each point, and m << n such that the prior estimate is given only at a few points
-    :param hyp: [1x4 pandas DF] of log-scaled hyperparameters to use in SFGP model (4 is number of hyperparameters)
-                log-scaled hyp take the form [mu, s^2, L, noise]
-    :param console: boolean indicating whether to display simulation progress on console
-    :param plotter: boolean indicating whether to plot simulation progress using plotter.py
-    :param log: boolean indicating whether to log simulation progress into CSV for performance analysis
-    :return: [3 value tuple] of
-        [list of dictionaries] log of loss by iteration
-        [list of dictionaries] log of agent positions and actions by iteration
-        [list of dictionaries] log of samples taken by agent over the course of simulation
-    """
-    print(line_break + "SFGP Todescato" + line_break) if console else None
-
-    # 0) Initialize logging lists and plotter
-    loss_log, agent_log, sample_log = [], [], [] if log else None
-    plotter.reset() if plotter else None
-
-    # 1) initialize SFGP model with hyperparameters and empty prior
-    model = init_SFGP(hyp, prior=None)
-
-    # 2) initialize arrays of x_star test points, y truth points, loss and bounding box of domain
-    truth_arr = np.vstack(truth.values.tolist())
-    x_star = truth_arr[:, [0, 1]]  # all rows, first two columns are X* gridded test points
-    y = truth_arr[:, [2]]  # all rows, third column is ground truth y points
-    bounding_box = np.array([np.amin(x_star[:, 0]), np.amax(x_star[:, 0]),
-                             np.amin(x_star[:, 1]), np.amax(x_star[:, 1])])  # [x_min, x_max, y_min, y_max]
-    loss = []
-
-    # 3) compute max predictive variance and keep as normalizing constant
-    mu_star, var_star = model.predict(x_star)
-    max_var_0 = np.amax(var_star)
-    print("Max Initial Predictive Variance: " + str(max_var_0)) if console else None
-
-    # 4) initialize SFGP model with prior to force-update model
-    model = init_SFGP(hyp, prior=prior)
-
-    # 5) compute prediction given prior and initialize relevant explore/exploit decision variables
-    mu_star, var_star = model.predict(x_star)
-    var = np.diag(var_star)
-    max_var_t = np.amax(var) * np.ones((agents, 1))
-    prob_explore_t = max_var_t / max_var_0 * np.ones((agents, 1))
-    explore_t = np.zeros((agents, 1))   # initialize to zero so agents do not sample on first iteration
-    centroids_t = positions     # initialize centroids governing Lloyd iterations to current positions
-    period = 0                  # irrelevant in this simulation, but necessary for logging consistency
-
-    # 6) begin iterative portion of algorithm
-    for iteration in range(iterations):
-
-        # 7) record samples from each agent on explore step (Todescato "Listen")
-        x_new = np.empty([0, 2])    # store new sample points
-        y_new = np.empty([0, 1])    # store new samples
-        id_new = np.empty([0, 1])   # store agent ids that sampled
-        for i in range(agents):
-            if explore_t[i] == 1:  # this robot is on an explore step: take sample
-                x_sample = positions[i, :]
-                sample_idx = np.logical_and(truth_arr[:, 0] == x_sample[0], truth_arr[:, 1] == x_sample[1])
-                y_sample = truth_arr[sample_idx, 2]  # retrieve f_val at matching point
-                print(f"Robot {i} explored {x_sample} and sampled {y_sample}") if console else None
-                x_new = np.vstack((x_new, x_sample))
-                y_new = np.vstack((y_new, y_sample))
-                id_new = np.vstack((id_new, i))
-            elif iteration > 0:     # 0th iteration is for initialization purposes only
-                print(f"Robot {i} exploited to {centroids_t[i, :]}") if console else None
-
-        # 8) update GP model and estimates (Todescato "Estimate update")
-        model.updt(x_new, y_new)
-        mu_star, var_star = model.predict(x_star)
-
-        # 9) compute loss given current positions
-        loss_vor = voronoi_bounded(positions, bounding_box)
-        loss_t = compute_loss(loss_vor, truth_arr)
-        loss.append(loss_t)
-
-        # 10) update partitions and centroids given current estimate (Todescato "Partition and centroids update")
-        lloyd_vor = voronoi_bounded(centroids_t, bounding_box)
-        centroids_t = compute_centroids(lloyd_vor, x_star, mu_star)
-
-        # 11) compute points of max variance
-        argmax_var_t, max_var_t = compute_max_var(lloyd_vor, truth_arr, var_star)
-
-        # 12) print to console, update log, and plot for this iteration
-        # (note: period is logged in all simulations for consistency, and DOES apply here)
-        if console:
-            print(f"\nIteration {iteration}")
-            print(f"Period {period}")
-            print(f"Current loss: {loss_t}")
-            print(f"Max var by cell: {max_var_t.flatten()}")
-            print(f"Normalizing max var: {max_var_0}")
-            print(f"Probability of exploration: {prob_explore_t.flatten()}")
-            print(f"Decision of exploration: {explore_t.flatten()}")
-        if log:
-            loss_log.append({"SimNum": sim_num, "Iteration": iteration, "Period": period, "Loss": loss_t})
-            for i in range(agents):
-                agent_log.append({"SimNum": sim_num, "Iteration": iteration, "Period": period, "Agent": i,
-                                  "X": positions[i, 0], "Y": positions[i, 1],
-                                  "XMax": argmax_var_t[i, 0], "YMax": positions[i, 1],
-                                  "VarMax": max_var_t[i, 0], "Var0": max_var_0,
-                                  "XCentroid": centroids_t[i, 0], "YCentroid": centroids_t[i, 1],
-                                  "ProbExplore": prob_explore_t[i, 0], "Explore": explore_t[i, 0]})
-            for i in range(id_new.size):
-                sample_log.append({"SimNum": sim_num, "Iteration": iteration, "Period": period,
-                                   "Agent": id_new[i, 0], "X": x_new[i, 0], "Y": x_new[i, 1], "Sample": y_new[i, 0]})
-        if plotter:
-            plotter.plot_explore(prob_explore_t, explore_t)
-            plotter.plot_mean(x_star, mu_star)
-            plotter.plot_var(x_star, var_star)
-            plotter.plot_loss_vor(loss_vor, truth_arr, explore_t)
-            plotter.plot_loss(loss)
-            plotter.plot_lloyd_vor(lloyd_vor, centroids_t, truth_arr)
-            plotter.show()
-
-        # 13) based on max variance, make next iteration's explore/exploit decision
-        prob_explore_t = max_var_t / max_var_0
-        explore_t = np.array([random.random() < cutoff for cutoff in prob_explore_t])  # Bernoulli wrt prob_explore_t
-
-        # 14) update agent positions (Todescato "Target-Points transmission")
-        for i in range(agents):
-            if explore_t[i, 0]:
-                positions[i, :] = argmax_var_t[i, :]
-            else:
-                positions[i, :] = centroids_t[i, :]
-
-    # 15) return log dictionary lists to driver function, which will save them into a dataframe
-    return loss_log, agent_log, sample_log
-
-
-def mfgp_todescato(sim_num, iterations, agents, positions, truth, prior, hyp, console, plotter, log):
-    """
-    Implement Algorithm 1 of Todescato et. al. "Multi-robots Gaussian estimation and coverage..." using a
-    multi-fidelity GP model
-
-    :param sim_num: [scalar] index number of current simulation (relevant when running multiple simulations)
-    :param iterations: [scalar] number of iterations to run simulation
-    :param agents: [scalar] number of agents being simulated
-    :param positions: [nAgentsx2 numpy array] of initial (x,y) points of agents
-    :param truth: [nx3 pandas DF] triples of (x,y,z=f(x,y)) where z=f is the ground truth function at each point
-    :param prior: [mx3 pandas DF] triples of (x,y,z~f(x,y)) where z~f is a low-fidelity prior estimate of the ground
-                  truth function at each point, and m << n such that the prior estimate is given only at a few points
-    :param hyp: [1x9 pandas DF] of log-scaled hyperparameters to use in MFGP model (9 is number of hyperparameters)
+    :param hyp: [1x9 pandas DF] of log-scaled hyperparameters to use in MFGP model if multi-fidelity simulation
                 log-scaled hyp take the form [mu_lo, s^2_lo, L_lo, mu_hi, s^2_hi, L_hi, rho, noise_lo, noise_hi]
+                OR
+                [1x4 pandas DF] of log-scaled hyperparameters to use in SFGP model if single-fidelity simulation
+                log-scaled hyp take the form [mu, s^2, l, noise]
     :param console: boolean indicating whether to display simulation progress on console
     :param plotter: boolean indicating whether to plot simulation progress using plotter.py
     :param log: boolean indicating whether to log simulation progress into CSV for performance analysis
@@ -635,14 +503,23 @@ def mfgp_todescato(sim_num, iterations, agents, positions, truth, prior, hyp, co
         [list of dictionaries] log of agent positions and actions by iteration
         [list of dictionaries] log of samples taken by agent over the course of simulation
     """
-    print(line_break + "MFGP Todescato" + line_break) if console else None
-
-    # 0) Initialize logging lists and plotter
+    # 0) initialize logging lists, plotter, and determine fidelity
     loss_log, agent_log, sample_log = [], [], [] if log else None
     plotter.reset() if plotter else None
+    if len(hyp.columns) == 4:
+        fidelity = "S"  # use singlefidelity model
+    elif len(hyp.columns) == 9:
+        fidelity = "M"  # use multifidelity model
+    else:
+        raise TypeError("Hyperparameters must be of length 4 (single-fidelity) or 9 (multi-fidelity)")
 
-    # 1) initialize MFGP model with hyperparameters and empty prior
-    model = init_MFGP(hyp, prior=None)
+    print(line_break + f"{fidelity}FGP Todescato" + line_break) if console else None
+
+    # 1) initialize model with hyperparameters and empty prior
+    if fidelity == "S":
+        model = init_SFGP(hyp, prior=None)
+    else:
+        model = init_MFGP(hyp, prior=None)
 
     # 2) initialize arrays of x_star test points, y truth points, loss and bounding box of domain
     truth_arr = np.vstack(truth.values.tolist())
@@ -657,9 +534,13 @@ def mfgp_todescato(sim_num, iterations, agents, positions, truth, prior, hyp, co
     max_var_0 = np.amax(var_star)
     print("Max Initial Predictive Variance: " + str(max_var_0)) if console else None
 
-    # 4) initialize MFGP model with prior and force-update model
-    model = init_MFGP(hyp, prior=prior)
-    model.updt_info(model.X_L, model.y_L, model.X_H, model.y_H)
+    # 4) initialize model with prior and force-update model
+    if fidelity == "S":
+        model = init_SFGP(hyp, prior=prior)
+        model.updt_info(model.X, model.y)
+    else:
+        model = init_MFGP(hyp, prior=prior)
+        model.updt_info(model.X_L, model.y_L, model.X_H, model.y_H)
 
     # 5) compute prediction given prior and initialize relevant explore/exploit decision variables
     mu_star, var_star = model.predict(x_star)
@@ -673,9 +554,7 @@ def mfgp_todescato(sim_num, iterations, agents, positions, truth, prior, hyp, co
     # 6) begin iterative portion of algorithm
     for iteration in range(iterations):
 
-        # ensure all positions are valid: if not, break and investigate
-        if not in_box(positions, bounding_box).all():
-            print("Warning: out of bounds")
+        print(f"\nBegin Iteration {iteration}") if console else None
 
         # 7) record samples from each agent on explore step (Todescato "Listen")
         x_new = np.empty([0, 2])    # store new sample points
@@ -694,7 +573,10 @@ def mfgp_todescato(sim_num, iterations, agents, positions, truth, prior, hyp, co
                 print(f"Robot {i} exploited to {centroids_t[i, :]}") if console else None
 
         # 8) update GP model and estimates (Todescato "Estimate update")
-        model.updt_hifi(x_new, y_new)
+        if fidelity == "S":
+            model.updt(x_new, y_new)
+        else:
+            model.updt_hifi(x_new, y_new)
         mu_star, var_star = model.predict(x_star)
 
         # 9) compute loss given current positions
@@ -703,37 +585,36 @@ def mfgp_todescato(sim_num, iterations, agents, positions, truth, prior, hyp, co
         loss.append(loss_t)
 
         # 10) update partitions and centroids given current estimate (Todescato "Partition and centroids update")
-        if centroids_t.shape[0] != agents:
-            print("Error")
         lloyd_vor = voronoi_bounded(centroids_t, bounding_box)
         centroids_t = compute_centroids(lloyd_vor, x_star, mu_star)
-        if centroids_t.shape[0] != agents:
-            print("Error")
 
         # 11) compute points of max variance
         argmax_var_t, max_var_t = compute_max_var(lloyd_vor, truth_arr, var_star)
 
         # 12) print to console, update log, and plot for this iteration
-        # (note: period is logged in all simulations for consistency, and DOES apply here)
+        # (note: period is logged in all simulations for consistency, and DOES NOT apply here)
         if console:
-            print(f"\nIteration {iteration}")
             print(f"Period {period}")
+            print(f"Fidelity {fidelity}")
             print(f"Current loss: {loss_t}")
             print(f"Max var by cell: {max_var_t.flatten()}")
             print(f"Normalizing max var: {max_var_0}")
             print(f"Probability of exploration: {prob_explore_t.flatten()}")
             print(f"Decision of exploration: {explore_t.flatten()}")
+            print(f"End Iteration {iteration}")
         if log:
-            loss_log.append({"SimNum": sim_num, "Iteration": iteration, "Period": period, "Loss": loss_t})
+            loss_log.append({"SimNum": sim_num, "Iteration": iteration, "Period": period,
+                             "Fidelity": fidelity, "Loss": loss_t})
             for i in range(agents):
-                agent_log.append({"SimNum": sim_num, "Iteration": iteration, "Period": period, "Agent": i,
+                agent_log.append({"SimNum": sim_num, "Iteration": iteration, "Period": period,
+                                  "Fidelity": fidelity, "Agent": i,
                                   "X": positions[i, 0], "Y": positions[i, 1],
                                   "XMax": argmax_var_t[i, 0], "YMax": positions[i, 1],
                                   "VarMax": max_var_t[i, 0], "Var0": max_var_0,
                                   "XCentroid": centroids_t[i, 0], "YCentroid": centroids_t[i, 1],
                                   "ProbExplore": prob_explore_t[i, 0], "Explore": explore_t[i, 0]})
             for i in range(id_new.size):
-                sample_log.append({"SimNum": sim_num, "Iteration": iteration, "Period": period,
+                sample_log.append({"SimNum": sim_num, "Iteration": iteration, "Period": period, "Fidelity": fidelity,
                                    "Agent": id_new[i, 0], "X": x_new[i, 0], "Y": x_new[i, 1], "Sample": y_new[i, 0]})
         if plotter:
             plotter.plot_explore(prob_explore_t, explore_t)
@@ -757,16 +638,17 @@ def mfgp_todescato(sim_num, iterations, agents, positions, truth, prior, hyp, co
 
     # 15) return log dictionary lists to driver function, which will save them into a dataframe
     return loss_log, agent_log, sample_log
+
 
 # TODO: what happens when a cell has no points to TSP tour?
-# TODO: condense MFGP and SFGP algos into ONE algo with isinstance
 # TODO: determine distance traveled on each iteration as alternative cost metric
-def mfgp_choi(sim_num, iterations, agents, positions, truth, prior, hyp, console, plotter, log):
+def choi(sim_num, iterations, agents, positions, truth, prior, hyp, console, plotter, log):
     """
     Implement "switching" algorithm of Choi et. al.  "Swarm intelligence for achieving the global maximum..." with
     a doubling trick inspired by Besson et. al. "What Doubling Tricks Can and Can't Do..."
-    Runs periods of exponentially-growing length in which agents explore to reduce below an uncertainty threshold,
+    Run periods of exponentially-growing length in which agents explore to reduce below an uncertainty threshold,
     then exploit for the remainder of the period.
+    Support single-fidelity and multi-fidelity models; model choice depends on hyperparameters passed in.
 
     :param sim_num: [scalar] index number of current simulation (relevant when running multiple simulations)
     :param iterations: [scalar] number of iterations to run simulation
@@ -775,8 +657,11 @@ def mfgp_choi(sim_num, iterations, agents, positions, truth, prior, hyp, console
     :param truth: [nx3 pandas DF] triples of (x,y,z=f(x,y)) where z=f is the ground truth function at each point
     :param prior: [mx3 pandas DF] triples of (x,y,z~f(x,y)) where z~f is a low-fidelity prior estimate of the ground
                   truth function at each point, and m << n such that the prior estimate is given only at a few points
-    :param hyp: [1x9 pandas DF] of log-scaled hyperparameters to use in MFGP model (9 is number of hyperparameters)
+    :param hyp: [1x9 pandas DF] of log-scaled hyperparameters to use in MFGP model if multi-fidelity simulation
                 log-scaled hyp take the form [mu_lo, s^2_lo, L_lo, mu_hi, s^2_hi, L_hi, rho, noise_lo, noise_hi]
+                OR
+                [1x4 pandas DF] of log-scaled hyperparameters to use in SFGP model if single-fidelity simulation
+                log-scaled hyp take the form [mu, s^2, l, noise]
     :param console: boolean indicating whether to display simulation progress on console
     :param plotter: boolean indicating whether to plot simulation progress using plotter.py
     :param log: boolean indicating whether to log simulation progress into CSV for performance analysis
@@ -785,14 +670,23 @@ def mfgp_choi(sim_num, iterations, agents, positions, truth, prior, hyp, console
         [list of dictionaries] log of agent positions and actions by iteration
         [list of dictionaries] log of samples taken by agent over the course of simulation
     """
-    print(line_break + "MFGP Choi" + line_break) if console else None
-
-    # 0) Initialize logging lists and plotter
+    # 0) initialize logging lists, plotter, and determine fidelity
     loss_log, agent_log, sample_log = [], [], [] if log else None
     plotter.reset() if plotter else None
+    if len(hyp.columns) == 4:
+        fidelity = "S"  # use singlefidelity model
+    elif len(hyp.columns) == 9:
+        fidelity = "M"  # use multifidelity model
+    else:
+        raise TypeError("Hyperparameters must be of length 4 (single-fidelity) or 9 (multi-fidelity)")
 
-    # 1) initialize MFGP model with hyperparameters and empty prior
-    model = init_MFGP(hyp, prior=None)
+    print(line_break + f"{fidelity}FGP Choi" + line_break) if console else None
+
+    # 1) initialize model with hyperparameters and empty prior
+    if fidelity == "S":
+        model = init_SFGP(hyp, prior=None)
+    else:
+        model = init_MFGP(hyp, prior=None)
 
     # 2) initialize arrays of x_star test points, y truth points, loss and bounding box of domain
     truth_arr = np.vstack(truth.values.tolist())
@@ -807,9 +701,13 @@ def mfgp_choi(sim_num, iterations, agents, positions, truth, prior, hyp, console
     max_var_0 = np.amax(var_star)
     print("Max Initial Predictive Variance: " + str(max_var_0)) if console else None
 
-    # 4) initialize MFGP model with prior and force-update model
-    model = init_MFGP(hyp, prior=prior)
-    model.updt_info(model.X_L, model.y_L, model.X_H, model.y_H)
+    # 4) initialize model with prior and force-update model
+    if fidelity == "S":
+        model = init_SFGP(hyp, prior=prior)
+        model.updt_info(model.X, model.y)
+    else:
+        model = init_MFGP(hyp, prior=prior)
+        model.updt_info(model.X_L, model.y_L, model.X_H, model.y_H)
 
     # 5) initialize vars and begin iterative portion of algorithm
     iteration = 0
@@ -835,16 +733,16 @@ def mfgp_choi(sim_num, iterations, agents, positions, truth, prior, hyp, console
         sample_clusters = compute_sample_clusters(sample_vor, sample_points)
 
         # 9) determine TSP tours through each cluster
+        print("\nBegin TSP Computation") if console else None
         tsp_tours_t = compute_sample_tsp(sample_clusters)   # dynamic list of tours which updates as agents take samples
+        print("\nEnd TSP Computation") if console else None
         tsp_tours_0 = copy.deepcopy(tsp_tours_t)            # static list of complete tours for this period
 
         # 9) determine length of this explore-then-exploit period and execute period
         period_length = choi_double(period)
         for step in range(period_length):
 
-            # ensure all positions are valid: if not, break and investigate
-            if not in_box(positions, bounding_box).all():
-                print("Warning: out of bounds")
+            print(f"\nBegin Iteration {iteration}") if console else None
 
             # 7) record samples from each agent on an explore step (i.e., on a TSP tour)
             x_new = np.empty([0, 2])    # store new sample points
@@ -863,7 +761,10 @@ def mfgp_choi(sim_num, iterations, agents, positions, truth, prior, hyp, console
                     print(f"Robot {i} exploited to {centroids_t[i, :]}") if console else None
 
             # 8) update GP model and estimates (Todescato "Estimate update")
-            model.updt_hifi(x_new, y_new)
+            if fidelity == "S":
+                model.updt(x_new, y_new)
+            else:
+                model.updt_hifi(x_new, y_new)
             mu_star, var_star = model.predict(x_star)
 
             # 9) compute loss given current positions
@@ -872,12 +773,8 @@ def mfgp_choi(sim_num, iterations, agents, positions, truth, prior, hyp, console
             loss.append(loss_t)
 
             # 10) update partitions and centroids using Lloyd iteration given current estimate
-            if centroids_t.shape[0] != agents:
-                print("Error")
             lloyd_vor = voronoi_bounded(centroids_t, bounding_box)
             centroids_t = compute_centroids(lloyd_vor, x_star, mu_star)
-            if centroids_t.shape[0] != agents:
-                print("Error")
 
             # 11) update status of learning progress (not necessary for decision, but useful for logging)
             argmax_var_t, max_var_t = compute_max_var(lloyd_vor, truth_arr, var_star)
@@ -885,30 +782,34 @@ def mfgp_choi(sim_num, iterations, agents, positions, truth, prior, hyp, console
             # 12) print to console, update log, and plot for this iteration
             # (note: period is logged in all simulations for consistency, and DOES apply here)
             if console:
-                print(f"\nIteration {iteration}")
                 print(f"Period {period}")
+                print(f"Fidelity {fidelity}")
                 print(f"Current loss: {loss_t}")
                 print(f"Max var by cell: {max_var_t.flatten()}")
                 print(f"Normalizing max var: {max_var_0}")
                 print(f"Probability of exploration: {prob_explore_t.flatten()}")
                 print(f"Decision of exploration: {explore_t.flatten()}")
+                print(f"End Iteration {iteration}")
             if log:
-                loss_log.append({"SimNum": sim_num, "Iteration": iteration, "Period": period, "Loss": loss_t})
+                loss_log.append({"SimNum": sim_num, "Iteration": iteration, "Period": period,
+                                 "Fidelity": fidelity, "Loss": loss_t})
                 for i in range(agents):
-                    agent_log.append({"SimNum": sim_num, "Iteration": iteration, "Period": period, "Agent": i,
+                    agent_log.append({"SimNum": sim_num, "Iteration": iteration, "Period": period,
+                                      "Fidelity": fidelity, "Agent": i,
                                       "X": positions[i, 0], "Y": positions[i, 1],
                                       "XMax": argmax_var_t[i, 0], "YMax": positions[i, 1],
                                       "VarMax": max_var_t[i, 0], "Var0": max_var_0,
                                       "XCentroid": centroids_t[i, 0], "YCentroid": centroids_t[i, 1],
                                       "ProbExplore": prob_explore_t[i, 0], "Explore": explore_t[i, 0]})
                 for i in range(id_new.size):
-                    sample_log.append({"SimNum": sim_num, "Iteration": iteration, "Period": period,
-                                      "Agent": id_new[i, 0], "X": x_new[i, 0], "Y": x_new[i, 1], "Sample": y_new[i, 0]})
+                    sample_log.append(
+                        {"SimNum": sim_num, "Iteration": iteration, "Period": period, "Fidelity": fidelity,
+                         "Agent": id_new[i, 0], "X": x_new[i, 0], "Y": x_new[i, 1], "Sample": y_new[i, 0]})
             if plotter:
                 plotter.plot_explore(prob_explore_t, explore_t)
                 plotter.plot_mean(x_star, mu_star)
                 plotter.plot_var(x_star, var_star)
-                plotter.plot_tsp(sample_vor, tsp_tours_0, tsp_tours_t)     # plot current and original TSP tours
+                plotter.plot_tsp(sample_vor, tsp_tours_0, tsp_tours_t)
                 plotter.plot_loss_vor(loss_vor, truth_arr, explore_t)
                 plotter.plot_loss(loss)
                 plotter.plot_lloyd_vor(lloyd_vor, centroids_t, truth_arr)
@@ -940,6 +841,7 @@ def mfgp_choi(sim_num, iterations, agents, positions, truth, prior, hyp, console
     # 17) return log dictionary lists to driver function, which will save them into a dataframe
     return loss_log, agent_log, sample_log
 
+
 if __name__ == "__main__":
     """
     Run a series of multiagent learning-coverage algorithm simulations.
@@ -949,8 +851,8 @@ if __name__ == "__main__":
     out_name = "Data/two_corners_sf"    # name of simulation, used as prefix of all associated output filenames
 
     agents = 4              # number of agents to use in simulation
-    iterations = 50         # number of iterations to run each simulation
-    simulations = 10        # number of simulations to run
+    iterations = 100        # number of iterations to run each simulation
+    simulations = 1         # number of simulations to run
     console = True          # boolean indicating if intermediate output should print to console
     log = True              # boolean indicating if output should be logged to CSV for performance analysis
     plotter = Plotter([-eps, 1 + eps, -eps, 1 + eps])   # x_min, x_max, y_min, y_max
@@ -975,10 +877,7 @@ if __name__ == "__main__":
 
         # 2) run simulation
         loss_log_t, agent_log_t, sample_log_t = \
-            mfgp_choi(sim_num, iterations, agents, positions, truth, prior, mf_hyp, console, plotter, log)
-            # mfgp_choi(sim_num, iterations, agents, positions, truth, prior, mf_hyp, console, plotter, log)
-            # mfgp_todescato(sim_num, iterations, agents, positions, truth, prior, mf_hyp, console, plotter, log)
-            # sfgp_todescato(sim_num, iterations, agents, positions, truth, prior, sf_hyp, console, plotter, log)
+            choi(sim_num, iterations, agents, positions, truth, prior, sf_hyp, console, plotter, log)
 
         # 3) extend logging lists to include current simulation's results
         loss_log.extend(loss_log_t)

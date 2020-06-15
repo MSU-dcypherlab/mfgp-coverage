@@ -9,4 +9,7 @@ venv/
 # ignore real world data for now
 Kaggle/
 
+# ignore Animation screenshots for now
+Animations/
+
 

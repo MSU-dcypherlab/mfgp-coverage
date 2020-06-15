@@ -464,12 +464,12 @@ def choi_threshold(var_star):
 def choi_double(period):
     """
     Given current period of Choi doubling algorithm, determine the number of iterations in this period
-    Begin with 5 iterations in first period, and double for all subsequent periods.
+    Begin with 10 iterations in first period, and double for all subsequent periods.
 
     :param period: [scalar] current period of Choi doubling algorithm
     :return: [scalar] number of iterations in this period
     """
-    return 5*2**period
+    return 10*2**period
 
 
 #######################################################################################################################
@@ -814,6 +814,7 @@ def choi(sim_num, iterations, agents, positions, truth, prior, hyp, console, plo
                 plotter.plot_loss(loss)
                 plotter.plot_lloyd_vor(lloyd_vor, centroids_t, truth_arr)
                 plotter.show()
+                plotter.save(f"Animations/null_two_corners_mf_choi/null_two_corners_mf_choi_{iteration}.png")
 
             # 13) make explore/exploit decision depending on remaining points in TSP tour for each agent
             for i in range(agents):
@@ -848,7 +849,7 @@ if __name__ == "__main__":
     """
 
     name = "Data/two_corners"           # name of simulation, used as prefix of all associated input filenames
-    out_name = "Data/two_corners_sf"    # name of simulation, used as prefix of all associated output filenames
+    out_name = "Data/null_two_corners_choi_mf"    # name of simulation, used as prefix of all associated output filenames
 
     agents = 4              # number of agents to use in simulation
     iterations = 100        # number of iterations to run each simulation
@@ -862,22 +863,22 @@ if __name__ == "__main__":
     truth = pd.read_csv(name + "_hifi.csv")         # CSV specifying ground truth (x,y,z=f(x,y)) triples
     mf_hyp = pd.read_csv(name + "_mf_hyp.csv")      # CSV specifying multi-fidelity GP hyperparameters
     sf_hyp = pd.read_csv(name + "_sf_hyp.csv")      # CSV specifying single-fidelity GP hyperparameters
-    # prior = pd.read_csv("Data/null_prior.csv")      # Use a null prior
-    prior = pd.read_csv(name + "_prior.csv")        # CSV specifying prior to condition GP upon before simulation
+    prior = pd.read_csv("Data/null_prior.csv")      # Use a null prior
+    #prior = pd.read_csv(name + "_prior.csv")        # CSV specifying prior to condition GP upon before simulation
 
     loss_log, agent_log, sample_log = [], [], []    # Initialize logging lists
 
     for sim_num in range(simulations):
         print(line_break + f"Simulation {sim_num}" + line_break)
 
-        # 1) randomly initialize agent positions
-        x_positions = [random.random() for i in range(agents)]
-        y_positions = [random.random() for i in range(agents)]
+        # 1) initialize agent positions
+        x_positions = [0.4, 0.5, 0.6, 0.5]  # [random.random() for i in range(agents)]
+        y_positions = [0.5, 0.4, 0.5, 0.6]  # [random.random() for i in range(agents)]
         positions = np.column_stack((x_positions, y_positions))
 
         # 2) run simulation
         loss_log_t, agent_log_t, sample_log_t = \
-            choi(sim_num, iterations, agents, positions, truth, prior, sf_hyp, console, plotter, log)
+            choi(sim_num, iterations, agents, positions, truth, prior, mf_hyp, console, plotter, log)
 
         # 3) extend logging lists to include current simulation's results
         loss_log.extend(loss_log_t)

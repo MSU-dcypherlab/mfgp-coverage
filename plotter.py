@@ -223,6 +223,14 @@ class Plotter:
         """
         self.Fig.show()
 
+    def save(self, fname):
+        """
+        Save canvas as png image with provided filename
+
+        :return: None
+        """
+        self.Fig.savefig(fname)
+
     def reset(self):
         """
         Reset plotter object between simulations. Clear iteration counter and list used in loss-vs-iteration plot.

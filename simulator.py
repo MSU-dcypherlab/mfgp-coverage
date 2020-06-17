@@ -469,7 +469,7 @@ def choi_double(period):
     :param period: [scalar] current period of Choi doubling algorithm
     :return: [scalar] number of iterations in this period
     """
-    return 10*2**period
+    return 8*2**period
 
 
 #######################################################################################################################
@@ -640,8 +640,6 @@ def todescato(sim_num, iterations, agents, positions, truth, prior, hyp, console
     return loss_log, agent_log, sample_log
 
 
-# TODO: what happens when a cell has no points to TSP tour?
-# TODO: determine distance traveled on each iteration as alternative cost metric
 def choi(sim_num, iterations, agents, positions, truth, prior, hyp, console, plotter, log):
     """
     Implement "switching" algorithm of Choi et. al.  "Swarm intelligence for achieving the global maximum..." with
@@ -814,7 +812,7 @@ def choi(sim_num, iterations, agents, positions, truth, prior, hyp, console, plo
                 plotter.plot_loss(loss)
                 plotter.plot_lloyd_vor(lloyd_vor, centroids_t, truth_arr)
                 plotter.show()
-                plotter.save(f"Animations/null_two_corners_mf_choi/null_two_corners_mf_choi_{iteration}.png")
+                # plotter.save(f"Animations/null_two_corners_mf_choi/null_two_corners_mf_choi_{iteration}.png")
 
             # 13) make explore/exploit decision depending on remaining points in TSP tour for each agent
             for i in range(agents):
@@ -843,28 +841,30 @@ def choi(sim_num, iterations, agents, positions, truth, prior, hyp, console, plo
     return loss_log, agent_log, sample_log
 
 
+# TODO: data post processing script: loss, normalized regret by iteration, time/distance
+# TODO: data post processing script: posterior variance, normalized variance regret?
 if __name__ == "__main__":
     """
     Run a series of multiagent learning-coverage algorithm simulations.
     """
 
     name = "Data/two_corners"           # name of simulation, used as prefix of all associated input filenames
-    out_name = "Data/null_two_corners_choi_mf"    # name of simulation, used as prefix of all associated output filenames
+    out_name = "Data/two_corners_todescato_hsf"  # name of simulation, used as prefix of all associated output filenames
 
     agents = 4              # number of agents to use in simulation
-    iterations = 100        # number of iterations to run each simulation
-    simulations = 1         # number of simulations to run
+    iterations = 120        # number of iterations to run each simulation
+    simulations = 10        # number of simulations to run
     console = True          # boolean indicating if intermediate output should print to console
     log = True              # boolean indicating if output should be logged to CSV for performance analysis
-    plotter = Plotter([-eps, 1 + eps, -eps, 1 + eps])   # x_min, x_max, y_min, y_max
-    # plotter = None          # do not plot
+    # plotter = Plotter([-eps, 1 + eps, -eps, 1 + eps])   # x_min, x_max, y_min, y_max
+    plotter = None          # do not plot
     np.random.seed(1234)    # seed random generator for reproducibility
 
     truth = pd.read_csv(name + "_hifi.csv")         # CSV specifying ground truth (x,y,z=f(x,y)) triples
     mf_hyp = pd.read_csv(name + "_mf_hyp.csv")      # CSV specifying multi-fidelity GP hyperparameters
     sf_hyp = pd.read_csv(name + "_sf_hyp.csv")      # CSV specifying single-fidelity GP hyperparameters
-    prior = pd.read_csv("Data/null_prior.csv")      # Use a null prior
-    #prior = pd.read_csv(name + "_prior.csv")        # CSV specifying prior to condition GP upon before simulation
+    # prior = pd.read_csv("Data/null_prior.csv")      # Use a null prior
+    prior = pd.read_csv(name + "_prior.csv")        # CSV specifying prior to condition GP upon before simulation
 
     loss_log, agent_log, sample_log = [], [], []    # Initialize logging lists
 
@@ -872,13 +872,15 @@ if __name__ == "__main__":
         print(line_break + f"Simulation {sim_num}" + line_break)
 
         # 1) initialize agent positions
-        x_positions = [0.4, 0.5, 0.6, 0.5]  # [random.random() for i in range(agents)]
-        y_positions = [0.5, 0.4, 0.5, 0.6]  # [random.random() for i in range(agents)]
+        # x_positions = [0.4, 0.5, 0.6, 0.5]
+        x_positions = [random.random() for i in range(agents)]
+        # y_positions = [0.5, 0.4, 0.5, 0.6]
+        y_positions = [random.random() for i in range(agents)]
         positions = np.column_stack((x_positions, y_positions))
 
         # 2) run simulation
         loss_log_t, agent_log_t, sample_log_t = \
-            choi(sim_num, iterations, agents, positions, truth, prior, mf_hyp, console, plotter, log)
+            todescato(sim_num, iterations, agents, positions, truth, prior, sf_hyp, console, plotter, log)
 
         # 3) extend logging lists to include current simulation's results
         loss_log.extend(loss_log_t)

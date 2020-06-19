@@ -846,16 +846,16 @@ if __name__ == "__main__":
     Run a series of multiagent learning-coverage algorithm simulations.
     """
 
-    name = "Data/two_corners"           # name of simulation, used as prefix of all associated input filenames
-    prefix = "Data/tc248"               # name of simulation, used as prefix of all associated output filenames
+    name = "Data/anti_two_corners"           # name of simulation, used as prefix of all associated input filenames
+    prefix = "Data/atc24"               # name of simulation, used as prefix of all associated output filenames
 
     agents = 4              # number of agents to use in simulation
-    iterations = 248        # number of iterations to run each simulation
-    simulations = 10        # number of simulations to run
+    iterations = 24        # number of iterations to run each simulation
+    simulations = 2        # number of simulations to run
     console = True          # boolean indicating if intermediate output should print to console
     log = True              # boolean indicating if output should be logged to CSV for performance analysis
-    # plotter = Plotter([-eps, 1 + eps, -eps, 1 + eps])   # x_min, x_max, y_min, y_max
-    plotter = None          # do not plot
+    plotter = Plotter([-eps, 1 + eps, -eps, 1 + eps])   # x_min, x_max, y_min, y_max
+    # plotter = None          # do not plot
     np.random.seed(1234)    # seed random generator for reproducibility
 
     truth = pd.read_csv(f"{name}_hifi.csv")         # CSV specifying ground truth (x,y,z=f(x,y)) triples
@@ -864,13 +864,13 @@ if __name__ == "__main__":
     null_prior = pd.read_csv("Data/null_prior.csv")      # Use a null prior
     human_prior = pd.read_csv(f"{name}_prior.csv")        # CSV specifying prior to condition GP upon before simulation
 
-    loss_log, agent_log, sample_log = [], [], []    # Initialize logging lists
     algorithms = ["todescato_nsf", "todescato_hsf", "todescato_hmf",
                   "choi_nsf", "choi_hsf", "choi_hmf"]
 
     for algo in algorithms:
 
         out_name = f"{prefix}_{algo}"
+        loss_log, agent_log, sample_log = [], [], []  # reset logging lists for this algo
 
         for sim_num in range(simulations):
             print(line_break + f"Simulation {sim_num} : {algo}" + line_break)

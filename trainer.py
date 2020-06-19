@@ -97,5 +97,5 @@ if __name__ == "__main__":
     """
 
     np.random.seed(1234)        # seed for reproducibility
-    name = "two_corners"        # name of distribution to infer from
-    train_sfgp(name)
+    name = "anti_two_corners"        # name of distribution to infer from
+    train_mfgp(name)

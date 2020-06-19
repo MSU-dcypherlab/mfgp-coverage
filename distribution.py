@@ -192,7 +192,7 @@ def two_corners():
                       positive_centers=[[0.1, 0.1], [0.9, 0.9]],
                       negative_centers=None)
     y_L = exponential(x_star, lenscale=0.3,
-                      positive_centers=[[0.1, 0.1], [0.9, 0.9]],
+                      positive_centers=[[0.1, 0.9], [0.9, 0.1]],
                       negative_centers=None)
     print("Correlation: " + str(np.corrcoef(y_L, y_H)))
     hifi = np.column_stack((x_star, y_H))
@@ -270,7 +270,7 @@ def two_corners():
     # 7) save files if distribution is deemed valid
     valid = input("Save distribution?")
     if valid.lower() == "y":
-        f_name = "two_corners"
+        f_name = "anti_two_corners"
         hifi_df.to_csv("Data/" + f_name + "_hifi.csv", index=False)
         lofi_df.to_csv("Data/" + f_name + "_lofi.csv", index=False)
         hifi_train_df.to_csv("Data/" + f_name + "_hifi_train.csv", index=False)

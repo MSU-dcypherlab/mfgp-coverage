@@ -10,7 +10,10 @@ last modified: 6/17/2020
 
 import pandas as pd
 import matplotlib.pyplot as plt
-import string
+
+light_rgb = [(1, 0, 0), (0, 1, 0), (0, 0, 1)]
+dark_rgb = [(0.5, 0, 0), (0, 0.5, 0), (0, 0, 0.5)]
+colors = light_rgb + dark_rgb
 
 
 def compute_dist(agents):
@@ -51,15 +54,22 @@ def plot_loss(losses):
 
     # plot df of all simulation losses
     plt.figure()
-    loss_df.plot()
+    loss_df.plot(color=colors)
     plt.title("Loss by Iteration")
+    plt.show()
+
+    # plot closeup of simulation loss at start
+    trunc = loss_df[loss_df.index <= 50]
+    plt.figure()
+    trunc.plot(color=colors)
+    plt.title("Loss by Iteration: Zoomed")
     plt.show()
 
     # compute rolling loss and plot
     window_size = 10
     rolling_loss_df = loss_df.rolling(window_size, min_periods=1, center=True).mean()
     plt.figure()
-    rolling_loss_df.plot()
+    rolling_loss_df.plot(color=colors)
     plt.title("Moving Average Loss by Iteration (n=10)")
 
 
@@ -91,7 +101,7 @@ def plot_regret(losses):
 
     # plot df of all simulation regrets
     plt.figure()
-    regret_df.plot()
+    regret_df.plot(color=colors)
     plt.title("Regret by Iteration")
     plt.show()
     #
@@ -126,7 +136,7 @@ def plot_var(agents):
 
     # plot df of all simulation vars
     plt.figure()
-    var_df.plot()
+    var_df.plot(color=colors)
     plt.title("Max Variance by Iteration")
     plt.show()
 
@@ -153,7 +163,7 @@ def plot_explore(agents):
 
     # plot df of all simulation explorations
     plt.figure()
-    explore_df.plot()
+    explore_df.plot(color=colors)
     plt.title("Probability of Exploration by Iteration")
     plt.show()
 
@@ -184,7 +194,7 @@ def plot_dist(agents):
 
     # plot df of all distances traveled
     plt.figure()
-    dist_df.plot()
+    dist_df.plot(color=colors)
     plt.title("Distance Travelled by Iteration")
     plt.show()
 
@@ -216,16 +226,15 @@ def plot_total_dist(agents):
 
     # plot df of all total distances traveled
     plt.figure()
-    dist_df.plot()
+    dist_df.plot(color=colors)
     plt.title("Total Distance Travelled by Iteration")
     plt.show()
-
 
 
 if __name__ == "__main__":
 
     # define simulation names to be analyzed
-    prefix = "Data/tc248"
+    prefix = "Data/atc24"
     algorithms = ["todescato", "choi"]
     fidelities = ["nsf", "hsf", "hmf"]
     names = [f"{prefix}_{a}_{f}" for a in algorithms for f in fidelities]
@@ -235,7 +244,7 @@ if __name__ == "__main__":
     loss_dtypes = {"SimNum": int, "Iteration": int, "Period": int,
                    "Fidelity": "str", "Loss": float}
     agent_dtypes = {"SimNum": int, "Iteration": int, "Period": int,
-                   "Fidelity": "str", "Agent": int,
+                    "Fidelity": "str", "Agent": int,
                     "X": float, "Y": float, "XMax": float, "YMax": float,
                     "VarMax": float, "Var0": float,
                     "XCentroid": float, "YCentroid": float, "ProbExplore": float,

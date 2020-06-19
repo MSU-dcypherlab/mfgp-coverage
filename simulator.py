@@ -477,7 +477,7 @@ def choi_double(period):
 #######################################################################################################################
 
 
-def todescato(sim_num, iterations, agents, positions, truth, prior, hyp, console, plotter, log):
+def todescato(title, sim_num, iterations, agents, positions, truth, prior, hyp, console, plotter, log):
     """
     Implement Algorithm 1 of Todescato et. al. "Multi-robots Gaussian estimation and coverage..." using a
     single-fidelity GP model.
@@ -513,7 +513,7 @@ def todescato(sim_num, iterations, agents, positions, truth, prior, hyp, console
     else:
         raise TypeError("Hyperparameters must be of length 4 (single-fidelity) or 9 (multi-fidelity)")
 
-    print(line_break + f"{fidelity}FGP Todescato" + line_break) if console else None
+    print(line_break + title + line_break) if console else None
 
     # 1) initialize model with hyperparameters and empty prior
     if fidelity == "S":
@@ -554,7 +554,7 @@ def todescato(sim_num, iterations, agents, positions, truth, prior, hyp, console
     # 6) begin iterative portion of algorithm
     for iteration in range(iterations):
 
-        print(f"\nBegin Iteration {iteration}") if console else None
+        print(f"\nBegin Iteration {iteration} of Simulation {sim_num} of {title}") if console else None
 
         # 7) record samples from each agent on explore step (Todescato "Listen")
         x_new = np.empty([0, 2])    # store new sample points
@@ -640,7 +640,7 @@ def todescato(sim_num, iterations, agents, positions, truth, prior, hyp, console
     return loss_log, agent_log, sample_log
 
 
-def choi(sim_num, iterations, agents, positions, truth, prior, hyp, console, plotter, log):
+def choi(title, sim_num, iterations, agents, positions, truth, prior, hyp, console, plotter, log):
     """
     Implement "switching" algorithm of Choi et. al.  "Swarm intelligence for achieving the global maximum..." with
     a doubling trick inspired by Besson et. al. "What Doubling Tricks Can and Can't Do..."
@@ -678,7 +678,7 @@ def choi(sim_num, iterations, agents, positions, truth, prior, hyp, console, plo
     else:
         raise TypeError("Hyperparameters must be of length 4 (single-fidelity) or 9 (multi-fidelity)")
 
-    print(line_break + f"{fidelity}FGP Choi" + line_break) if console else None
+    print(line_break + title + line_break) if console else None
 
     # 1) initialize model with hyperparameters and empty prior
     if fidelity == "S":
@@ -740,7 +740,7 @@ def choi(sim_num, iterations, agents, positions, truth, prior, hyp, console, plo
         period_length = choi_double(period)
         for step in range(period_length):
 
-            print(f"\nBegin Iteration {iteration}") if console else None
+            print(f"\nBegin Iteration {iteration} of Simulation {sim_num} of {title}") if console else None
 
             # 7) record samples from each agent on an explore step (i.e., on a TSP tour)
             x_new = np.empty([0, 2])    # store new sample points
@@ -841,18 +841,16 @@ def choi(sim_num, iterations, agents, positions, truth, prior, hyp, console, plo
     return loss_log, agent_log, sample_log
 
 
-# TODO: data post processing script: loss, normalized regret by iteration, time/distance
-# TODO: data post processing script: posterior variance, normalized variance regret?
 if __name__ == "__main__":
     """
     Run a series of multiagent learning-coverage algorithm simulations.
     """
 
     name = "Data/two_corners"           # name of simulation, used as prefix of all associated input filenames
-    out_name = "Data/two_corners_todescato_hsf"  # name of simulation, used as prefix of all associated output filenames
+    prefix = "Data/tc256"               # name of simulation, used as prefix of all associated output filenames
 
     agents = 4              # number of agents to use in simulation
-    iterations = 120        # number of iterations to run each simulation
+    iterations = 248        # number of iterations to run each simulation
     simulations = 10        # number of simulations to run
     console = True          # boolean indicating if intermediate output should print to console
     log = True              # boolean indicating if output should be logged to CSV for performance analysis
@@ -860,39 +858,59 @@ if __name__ == "__main__":
     plotter = None          # do not plot
     np.random.seed(1234)    # seed random generator for reproducibility
 
-    truth = pd.read_csv(name + "_hifi.csv")         # CSV specifying ground truth (x,y,z=f(x,y)) triples
-    mf_hyp = pd.read_csv(name + "_mf_hyp.csv")      # CSV specifying multi-fidelity GP hyperparameters
-    sf_hyp = pd.read_csv(name + "_sf_hyp.csv")      # CSV specifying single-fidelity GP hyperparameters
-    # prior = pd.read_csv("Data/null_prior.csv")      # Use a null prior
-    prior = pd.read_csv(name + "_prior.csv")        # CSV specifying prior to condition GP upon before simulation
+    truth = pd.read_csv(f"{name}_hifi.csv")         # CSV specifying ground truth (x,y,z=f(x,y)) triples
+    mf_hyp = pd.read_csv(f"{name}_mf_hyp.csv")      # CSV specifying multi-fidelity GP hyperparameters
+    sf_hyp = pd.read_csv(f"{name}_sf_hyp.csv")      # CSV specifying single-fidelity GP hyperparameters
+    null_prior = pd.read_csv("Data/null_prior.csv")      # Use a null prior
+    human_prior = pd.read_csv(f"{name}_prior.csv")        # CSV specifying prior to condition GP upon before simulation
 
     loss_log, agent_log, sample_log = [], [], []    # Initialize logging lists
+    algorithms = ["todescato_nsf", "todescato_hsf", "todescato_hmf",
+                  "choi_nsf", "choi_hsf", "choi_hmf"]
 
-    for sim_num in range(simulations):
-        print(line_break + f"Simulation {sim_num}" + line_break)
+    for algo in algorithms:
 
-        # 1) initialize agent positions
-        # x_positions = [0.4, 0.5, 0.6, 0.5]
-        x_positions = [random.random() for i in range(agents)]
-        # y_positions = [0.5, 0.4, 0.5, 0.6]
-        y_positions = [random.random() for i in range(agents)]
-        positions = np.column_stack((x_positions, y_positions))
+        out_name = f"{prefix}_{algo}"
 
-        # 2) run simulation
-        loss_log_t, agent_log_t, sample_log_t = \
-            todescato(sim_num, iterations, agents, positions, truth, prior, sf_hyp, console, plotter, log)
+        for sim_num in range(simulations):
+            print(line_break + f"Simulation {sim_num} : {algo}" + line_break)
 
-        # 3) extend logging lists to include current simulation's results
-        loss_log.extend(loss_log_t)
-        agent_log.extend(agent_log_t)
-        sample_log.extend(sample_log_t)
+            # 1) initialize agent positions
+            x_positions = [random.random() for i in range(agents)]
+            y_positions = [random.random() for i in range(agents)]
+            positions = np.column_stack((x_positions, y_positions))
 
-    # save dataframes from simulation results for post-analysis
-    if log:
-        loss_df = pd.DataFrame(loss_log)
-        loss_df.to_csv(out_name + "_loss.csv")
-        agent_df = pd.DataFrame(agent_log)
-        agent_df.to_csv(out_name + "_agent.csv")
-        sample_df = pd.DataFrame(sample_log)
-        sample_df.to_csv(out_name + "_sample.csv")
+            # 2) select hyperparameters
+            if "mf" in algo:
+                hyp = mf_hyp
+            else:
+                hyp = sf_hyp
+
+            # 3) select prior
+            if "_n" in algo:
+                prior = null_prior
+            else:
+                prior = human_prior
+
+            # 4) run simulation
+            if "choi" in algo:
+                loss_log_t, agent_log_t, sample_log_t = \
+                    choi(algo, sim_num, iterations, agents, positions, truth, prior, hyp, console, plotter, log)
+            else:
+                loss_log_t, agent_log_t, sample_log_t = \
+                    todescato(algo, sim_num, iterations, agents, positions, truth, prior, hyp, console, plotter, log)
+
+            # 3) extend logging lists to include current simulation's results
+            loss_log.extend(loss_log_t)
+            agent_log.extend(agent_log_t)
+            sample_log.extend(sample_log_t)
+
+        # save dataframes from simulation results for post-analysis
+        if log:
+            loss_df = pd.DataFrame(loss_log)
+            loss_df.to_csv(out_name + "_loss.csv")
+            agent_df = pd.DataFrame(agent_log)
+            agent_df.to_csv(out_name + "_agent.csv")
+            sample_df = pd.DataFrame(sample_log)
+            sample_df.to_csv(out_name + "_sample.csv")
 

@@ -38,9 +38,10 @@ def train_sfgp(name):
 
     # 4) train model and display results
     model.train()
+    hyp = model.hyp
     ehyp = np.exp(model.hyp)
     for i in range(len(labels)):
-        print(labels[i] + ' : ' + str(ehyp[i]))
+        print(f"{labels[i]} : {hyp[i]} : {ehyp[i]}")
 
     # 5) save hyperparameters if training was a success
     valid = input("Save single-fidelity hyperparameters?")
@@ -97,4 +98,4 @@ if __name__ == "__main__":
 
     np.random.seed(1234)        # seed for reproducibility
     name = "two_corners"        # name of distribution to infer from
-    train_mfgp(name)
+    train_sfgp(name)

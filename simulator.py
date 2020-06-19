@@ -847,7 +847,7 @@ if __name__ == "__main__":
     """
 
     name = "Data/two_corners"           # name of simulation, used as prefix of all associated input filenames
-    prefix = "Data/tc256"               # name of simulation, used as prefix of all associated output filenames
+    prefix = "Data/tc248"               # name of simulation, used as prefix of all associated output filenames
 
     agents = 4              # number of agents to use in simulation
     iterations = 248        # number of iterations to run each simulation

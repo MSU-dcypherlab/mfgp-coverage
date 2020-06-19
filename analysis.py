@@ -10,6 +10,7 @@ last modified: 6/17/2020
 
 import pandas as pd
 import matplotlib.pyplot as plt
+import string
 
 
 def compute_dist(agents):
@@ -224,13 +225,21 @@ def plot_total_dist(agents):
 if __name__ == "__main__":
 
     # define simulation names to be analyzed
-    prefix = "Data/two_corners"
+    prefix = "Data/tc248"
     algorithms = ["todescato", "choi"]
-    fidelities = ["hsf", "hmf"]
-    # algorithms = ["choi"]
-    # fidelities = ["hmf"]
+    fidelities = ["nsf", "hsf", "hmf"]
     names = [f"{prefix}_{a}_{f}" for a in algorithms for f in fidelities]
     titles = [f"{a}_{f}" for a in algorithms for f in fidelities]
+
+    # define dtypes to be loaded
+    loss_dtypes = {"SimNum": int, "Iteration": int, "Period": int,
+                   "Fidelity": "str", "Loss": float}
+    agent_dtypes = {"SimNum": int, "Iteration": int, "Period": int,
+                   "Fidelity": "str", "Agent": int,
+                    "X": float, "Y": float, "XMax": float, "YMax": float,
+                    "VarMax": float, "Var0": float,
+                    "XCentroid": float, "YCentroid": float, "ProbExplore": float,
+                    "Explore": object}
 
     # initialize dicts which will hold dataframes
     agents, losses, samples = {}, {}, {}
@@ -238,16 +247,16 @@ if __name__ == "__main__":
 
         # read csvs in for each simulation
         agent_fname = f"{name}_agent.csv"
-        agent_df = pd.read_csv(agent_fname, index_col=0)
+        agent_df = pd.read_csv(agent_fname, index_col=0, dtype=agent_dtypes)
         loss_fname = f"{name}_loss.csv"
-        loss_df = pd.read_csv(loss_fname, index_col=0)
-        sample_fname = f"{name}_sample.csv"
-        sample_df = pd.read_csv(sample_fname, index_col=0)
+        loss_df = pd.read_csv(loss_fname, index_col=0, dtype=loss_dtypes)
+        # sample_fname = f"{name}_sample.csv"
+        # sample_df = pd.read_csv(sample_fname, index_col=0)
 
         # add each df to its respective dictionary for easy analysis
         agents[title] = agent_df
         losses[title] = loss_df
-        samples[title] = sample_df
+        # samples[title] = sample_df
 
     # compute dists in place
     compute_dist(agents)

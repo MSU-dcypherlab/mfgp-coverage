@@ -9,23 +9,30 @@ by: Andrew McDonald, D-CYPHER Lab, Michigan State University
 last modified: 6/11/2020
 """
 
+import copy
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import scipy.stats
 
 """ Minimum value possible when normalizing function values (to avoid div-by-0 errors) """
 epsilon = 0.01
 
 
-def normalize(y):
+def normalize(y, use_epsilon=True):
     """
     Normalize the numpy array y between 0 + epsilon and 1. Epsilon lower bound prevents divide by zero errors later
     in coverage algorithms (points with zero weight lead to numerical errors when computing cell centroids).
 
     :param y: [nx1 numpy array] of values to be normalized
+    :param use_epsilon: [boolean] if True, add epsilon to minimum to prevent later divby0 errors
     :return: [nx1 numpy array] normalized with values in [epsilon, 1]
     """
-    y = y - np.amin(y) + epsilon
+    if use_epsilon:
+        y = y - np.amin(y) + epsilon
+    else:
+        y = y - np.amin(y)
+
     y = y / np.amax(y)
     return y
 
@@ -281,8 +288,152 @@ def two_corners():
     print("Done.")
 
 
+def australian_wildfires():
+    """
+    Generate a multi-fidelity 3-dimensional (x, y, z=f(x,y)) distribution based on locational occurrence
+    data of Australian Wildfires from Kaggle. Verify correlation and visualize distribution with matplotlib.
+    Pull random subsample of generated points and save separately for hyperparameter training. Save high and
+    low fidelity distribution evaluations to CSV files.
+
+    Data retrieved from https://www.kaggle.com/carlosparadis/fires-from-space-australia-and-new-zeland May 28, 2020.
+    Referenced https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.gaussian_kde.html June 23, 2020.
+
+    :return: None
+    """
+
+    # 1) read in raw CSV from Kaggle and filter to single date
+    fires = pd.read_csv("Kaggle/AustralianWildfires/fire_archive_M6_96619.csv")
+    date = "2019-08-01"
+    fires = fires[fires.acq_date == date]
+    plt.scatter(fires.longitude, fires.latitude)
+    plt.title(f"Filtered by Date: {date}")
+    plt.show()
+
+    # 2) select only data from within boxed latitude
+    fires = fires[(fires.latitude > -35) & (fires.latitude < -29) &
+                  (fires.longitude > 115) & (fires.longitude < 125)]
+
+    # 3) take X points to be (x1 = longitude, x2 = latitude) and normalize into unit square
+    data = np.array([fires.longitude, fires.latitude]).T
+    plt.scatter(data[:, 0], data[:, 1])
+    plt.title(f"Filtered by Date: {date} and Lat/Lon")
+    plt.show()
+
+    data[:, 0] = normalize(data[:, 0], use_epsilon=False)
+    data[:, 1] = normalize(data[:, 1], use_epsilon=False)
+
+    # 4) derive KDE estimate of occurrences for density function (scipy takes each row as a dimension, not column)
+    hifi_kde = scipy.stats.gaussian_kde(data.T)
+
+    # 5) create low-fidelity KDE in which bandwidth/lengthscale is longer
+    lofi_kde = copy.deepcopy(hifi_kde)
+    lofi_kde.set_bandwidth(hifi_kde.factor * 2)
+
+    # 6) use KDE models to predict on grid and normalize, then add noise
+    delta = 0.02
+    grid = np.arange(0, 1 + delta, delta)
+    x_star = np.array([[i, j] for i in grid for j in grid])
+    hifi_noise = 0.1
+    lofi_noise = 0.25
+
+    y_H = hifi_kde(x_star.T)        # scipy takes rows as dimensions here
+    y_L = lofi_kde(x_star.T)        # scipy takes rows as dimensions here
+
+    y_H = normalize(y_H) + np.random.default_rng().normal(loc=0, scale=hifi_noise, size=y_H.shape[0])
+    y_L = normalize(y_L) + np.random.default_rng().normal(loc=0, scale=lofi_noise, size=y_H.shape[0])
+
+    # 7) verify between-fidelity correlation
+    print("Correlation: " + str(np.corrcoef(y_L, y_H)))
+    hifi = np.column_stack((x_star, y_H))
+    lofi = np.column_stack((x_star, y_L))
+    sifi = np.vstack((hifi, lofi))
+
+    # 8) construct sample arrays for hyperparameter training
+    sample_size = int(0.1 * x_star.shape[0])
+
+    idx = np.random.randint(0, x_star.shape[0], size=sample_size)
+    hifi_train = hifi[idx, :]
+    idx = np.random.randint(0, x_star.shape[0], size=sample_size)
+    lofi_train = lofi[idx, :]
+    idx = np.random.randint(0, x_star.shape[0], size=sample_size)
+    sifi_train = sifi[idx, :]
+
+    # 9) construct small prior array for initial conditioning in simulation
+    prior_points = [0.1 * i for i in range(11)]
+    x_prior = np.array([[i, j] for i in prior_points for j in prior_points])
+    prior_idx = [np.logical_and(np.isclose(x[0], x_star[:, 0]), np.isclose(x[1], x_star[:, 1])) for x in x_prior]
+    y_prior = np.array([y_L[idx] for idx in prior_idx])
+    prior = np.column_stack((x_prior, y_prior))
+
+    # 10) construct dataframes from arrays
+    hifi_df = pd.DataFrame(hifi)
+    hifi_df.columns = ["X", "Y", "f_H"]
+    lofi_df = pd.DataFrame(lofi)
+    lofi_df.columns = ["X", "Y", "f_L"]
+    hifi_train_df = pd.DataFrame(hifi_train)
+    hifi_train_df.columns = ["X", "Y", "f_H_train"]
+    lofi_train_df = pd.DataFrame(lofi_train)
+    lofi_train_df.columns = ["X", "Y", "f_L_train"]
+    sifi_train_df = pd.DataFrame(sifi_train)
+    sifi_train_df.columns = ["X", "Y", "f_S_train"]
+    prior_df = pd.DataFrame(prior)
+    prior_df.columns = ["X", "Y", "f_prior"]
+
+    # 11) visualize results
+    fig = plt.figure()
+
+    ax = fig.add_subplot(321)
+    ax.scatter(x_star[:, 0], x_star[:, 1], c=y_H[:])
+    ax.set_aspect("equal")
+    ax.set_title("High Fidelity")
+
+    ax = fig.add_subplot(323)
+    ax.scatter(x_star[:, 0], x_star[:, 1], c=y_L[:])
+    ax.set_aspect("equal")
+    ax.set_title("Low Fidelity")
+
+    diff = y_H - y_L
+    ax = fig.add_subplot(325)
+    ax.scatter(x_star[:, 0], x_star[:, 1], c=diff[:])
+    ax.set_aspect("equal")
+    ax.set_title("Difference")
+
+    ax = fig.add_subplot(322)
+    ax.scatter(hifi_train[:, 0], hifi_train[:, 1], c=hifi_train[:, 2])
+    ax.set_aspect("equal")
+    ax.set_title("Hifi Train")
+
+    ax = fig.add_subplot(324)
+    ax.scatter(lofi_train[:, 0], lofi_train[:, 1], c=lofi_train[:, 2])
+    ax.set_aspect("equal")
+    ax.set_title("Lofi Train")
+
+    ax = fig.add_subplot(326)
+    ax.scatter(prior[:, 0], prior[:, 1], c=prior[:, 2])
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.set_aspect("equal")
+    ax.set_title("Prior Points")
+
+    plt.show()
+
+    # 12) save files if distribution is deemed valid
+    valid = input("Save distribution?")
+    if valid.lower() == "y":
+        f_name = "australia3"
+        hifi_df.to_csv(f"Data/{f_name}_hifi.csv", index=False)
+        lofi_df.to_csv(f"Data/{f_name}_lofi.csv", index=False)
+        hifi_train_df.to_csv(f"Data/{f_name}_hifi_train.csv", index=False)
+        lofi_train_df.to_csv(f"Data/{f_name}_lofi_train.csv", index=False)
+        sifi_train_df.to_csv(f"Data/{f_name}_sifi_train.csv", index=False)
+        prior_df.to_csv(f"Data/{f_name}_prior.csv", index=False)
+        fig.savefig(f"Images/{f_name}_distribution.png")
+
+    print("Done.")
+
+
 if __name__ == "__main__":
     """
     Run selected distribution-generating function.
     """
-    two_corners()
+    australian_wildfires()

@@ -9,6 +9,7 @@ last modified: 6/17/2020
 """
 
 import pandas as pd
+import numpy as np
 import matplotlib.pyplot as plt
 
 light_rgb = [(1, 0, 0), (0, 1, 0), (0, 0, 1)]
@@ -28,14 +29,15 @@ def compute_dist(agents):
         diffs = df.groupby(by=["SimNum", "Agent"]).diff()
 
         # compute distance traveled as dx^2 + dy^2
-        df["Distance"] = diffs["X"] ** 2 + diffs["Y"] ** 2
+        df["Distance2"] = np.sqrt(diffs["X"] ** 2 + diffs["Y"] ** 2)
         df = df.fillna(0)
 
 
-def plot_loss(losses):
+def plot_loss(losses, name=None):
     """
 
     :param losses:
+    :param name:
     :return:
     """
     loss_df = None
@@ -56,6 +58,7 @@ def plot_loss(losses):
     plt.figure()
     loss_df.plot(color=colors)
     plt.title("Loss by Iteration")
+    plt.savefig(f"Images/{name}_loss.png") if name is not None else None
     plt.show()
 
     # plot closeup of simulation loss at start
@@ -63,6 +66,7 @@ def plot_loss(losses):
     plt.figure()
     trunc.plot(color=colors)
     plt.title("Loss by Iteration: Zoomed")
+    plt.savefig(f"Images/{name}_loss_zoomed.png") if name is not None else None
     plt.show()
 
     # compute rolling loss and plot
@@ -71,12 +75,15 @@ def plot_loss(losses):
     plt.figure()
     rolling_loss_df.plot(color=colors)
     plt.title("Moving Average Loss by Iteration (n=10)")
+    plt.savefig(f"Images/{name}_loss_rolling.png") if name is not None else None
+    plt.show()
 
 
-def plot_regret(losses):
+def plot_regret(losses, name=None):
     """
 
     :param losses:
+    :param name:
     :return:
     """
     regret_df = None
@@ -88,7 +95,9 @@ def plot_regret(losses):
         mean_loss.columns = [title]
 
         # subtract min value from all entries
-        norm_loss = mean_loss - mean_loss.min()
+        last_loss = mean_loss.iloc[-1]
+        min_loss = mean_loss.min()
+        norm_loss = np.maximum(mean_loss - min_loss, 0)
 
         # cumulative-sum normalized loss to obtain regret
         regret = norm_loss.cumsum()
@@ -103,6 +112,7 @@ def plot_regret(losses):
     plt.figure()
     regret_df.plot(color=colors)
     plt.title("Regret by Iteration")
+    plt.savefig(f"Images/{name}_regret.png") if name is not None else None
     plt.show()
     #
     # # compute rolling loss and plot
@@ -113,10 +123,11 @@ def plot_regret(losses):
     # plt.title("Moving Average Loss by Iteration (n=10)")
 
 
-def plot_var(agents):
+def plot_var(agents, name=None):
     """
 
     :param agents:
+    :param name:
     :return:
     """
     var_df = None
@@ -138,13 +149,15 @@ def plot_var(agents):
     plt.figure()
     var_df.plot(color=colors)
     plt.title("Max Variance by Iteration")
+    plt.savefig(f"Images/{name}_var.png") if name is not None else None
     plt.show()
 
 
-def plot_explore(agents):
+def plot_explore(agents, name=None):
     """
 
     :param agents:
+    :param name:
     :return:
     """
     explore_df = None
@@ -165,13 +178,16 @@ def plot_explore(agents):
     plt.figure()
     explore_df.plot(color=colors)
     plt.title("Probability of Exploration by Iteration")
+    plt.savefig(f"Images/{name}_explore.png") if name is not None else None
     plt.show()
 
 
-def plot_dist(agents):
+
+def plot_dist(agents, name=None):
     """
 
     :param agents:
+    :param name:
     :return:
     """
     dist_df = None
@@ -196,13 +212,15 @@ def plot_dist(agents):
     plt.figure()
     dist_df.plot(color=colors)
     plt.title("Distance Travelled by Iteration")
+    plt.savefig(f"Images/{name}_dist.png") if name is not None else None
     plt.show()
 
 
-def plot_total_dist(agents):
+def plot_total_dist(agents, name=None):
     """
 
     :param agents:
+    :param name:
     :return:
     """
     dist_df = None
@@ -228,15 +246,17 @@ def plot_total_dist(agents):
     plt.figure()
     dist_df.plot(color=colors)
     plt.title("Total Distance Travelled by Iteration")
+    plt.savefig(f"Images/{name}_total_dist.png") if name is not None else None
     plt.show()
 
 
 if __name__ == "__main__":
 
     # define simulation names to be analyzed
-    prefix = "Data/atc24"
+    sim_name = "australia3"
+    prefix = f"Data/{sim_name}"
     algorithms = ["todescato", "choi"]
-    fidelities = ["nsf", "hsf", "hmf"]
+    fidelities = ["hmf", "hsf", "nsf"]
     names = [f"{prefix}_{a}_{f}" for a in algorithms for f in fidelities]
     titles = [f"{a}_{f}" for a in algorithms for f in fidelities]
 
@@ -270,10 +290,11 @@ if __name__ == "__main__":
     # compute dists in place
     compute_dist(agents)
 
-    # plot items
-    plot_loss(losses)
-    plot_regret(losses)
-    plot_var(agents)
-    plot_explore(agents)
-    plot_dist(agents)
-    plot_total_dist(agents)
+    # plot analysis
+    plot_loss(losses, sim_name)
+    plot_regret(losses, sim_name)
+    plot_var(agents, sim_name)
+    plot_explore(agents, sim_name)
+    plot_dist(agents, sim_name)
+    plot_total_dist(agents, sim_name)
+

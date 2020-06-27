@@ -41,7 +41,7 @@ def train_sfgp(name):
     hyp = model.hyp
     ehyp = np.exp(model.hyp)
     for i in range(len(labels)):
-        print(f"{labels[i]} : {hyp[i]} : {ehyp[i]}")
+        print(f"{labels[i]} = {ehyp[i]} // log({labels[i]}) = {hyp[i]}")
 
     # 5) save hyperparameters if training was a success
     valid = input("Save single-fidelity hyperparameters?")
@@ -72,15 +72,16 @@ def train_mfgp(name):
     y_H = hifi[:, 2].reshape(-1, 1)
 
     # 3) initialize model with approximate lengthscale to accelerate training
-    len_L = 0.4
-    len_H = 0.05
+    len_L = 0.1
+    len_H = 0.01
     model = MFGP(X_L, y_L, X_H, y_H, len_L, len_H)
 
     # 4) train model and display results
     model.train()
+    hyp = model.hyp
     ehyp = np.exp(model.hyp)
     for i in range(len(labels)):
-        print(labels[i] + ' : ' + str(ehyp[i]))
+        print(f"{labels[i]} = {ehyp[i]} // log({labels[i]}) = {hyp[i]}")
 
     # 5) save hyperparameters if training was a success
     valid = input("Save multi-fidelity hyperparameters?")
@@ -97,5 +98,7 @@ if __name__ == "__main__":
     """
 
     np.random.seed(1234)        # seed for reproducibility
-    name = "anti_two_corners"        # name of distribution to infer from
+    name = "australia3"        # name of distribution to infer from
+    train_sfgp(name)
     train_mfgp(name)
+

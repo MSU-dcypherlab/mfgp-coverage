@@ -548,7 +548,8 @@ def todescato(title, sim_num, iterations, agents, positions, truth, prior, hyp, 
     max_var_t = np.amax(var) * np.ones((agents, 1))
     prob_explore_t = max_var_t / max_var_0 * np.ones((agents, 1))
     explore_t = np.zeros((agents, 1))   # initialize to zero so agents do not sample on first iteration
-    centroids_t = positions     # initialize centroids governing Lloyd iterations to current positions
+    prev_positions = np.copy(positions)     # store previous iteration positions to compute distance
+    centroids_t = np.copy(positions)     # initialize centroids governing Lloyd iterations to current positions
     period = 0                  # irrelevant in this simulation, but necessary for logging consistency
 
     # 6) begin iterative portion of algorithm
@@ -556,7 +557,7 @@ def todescato(title, sim_num, iterations, agents, positions, truth, prior, hyp, 
 
         print(f"\nBegin Iteration {iteration} of Simulation {sim_num} of {title}") if console else None
 
-        # 7) record samples from each agent on explore step (Todescato "Listen")
+        # 7) record samples from each agent on explore step (Todescato "Listen") and log distance
         x_new = np.empty([0, 2])    # store new sample points
         y_new = np.empty([0, 1])    # store new samples
         id_new = np.empty([0, 1])   # store agent ids that sampled
@@ -571,6 +572,8 @@ def todescato(title, sim_num, iterations, agents, positions, truth, prior, hyp, 
                 id_new = np.vstack((id_new, i))
             elif iteration > 0:     # 0th iteration is for initialization purposes only
                 print(f"Robot {i} exploited to {centroids_t[i, :]}") if console else None
+
+        distance = np.sqrt(np.sum((positions - prev_positions) ** 2, axis=1)).reshape(-1, 1)
 
         # 8) update GP model and estimates (Todescato "Estimate update")
         if fidelity == "S":
@@ -612,7 +615,8 @@ def todescato(title, sim_num, iterations, agents, positions, truth, prior, hyp, 
                                   "XMax": argmax_var_t[i, 0], "YMax": positions[i, 1],
                                   "VarMax": max_var_t[i, 0], "Var0": max_var_0,
                                   "XCentroid": centroids_t[i, 0], "YCentroid": centroids_t[i, 1],
-                                  "ProbExplore": prob_explore_t[i, 0], "Explore": explore_t[i, 0]})
+                                  "ProbExplore": prob_explore_t[i, 0], "Explore": explore_t[i, 0],
+                                  "Distance": distance[i, 0]})
             for i in range(id_new.size):
                 sample_log.append({"SimNum": sim_num, "Iteration": iteration, "Period": period, "Fidelity": fidelity,
                                    "Agent": id_new[i, 0], "X": x_new[i, 0], "Y": x_new[i, 1], "Sample": y_new[i, 0]})
@@ -630,6 +634,7 @@ def todescato(title, sim_num, iterations, agents, positions, truth, prior, hyp, 
         explore_t = np.array([random.random() < cutoff for cutoff in prob_explore_t])  # Bernoulli wrt prob_explore_t
 
         # 14) update agent positions (Todescato "Target-Points transmission")
+        prev_positions = np.copy(positions)
         for i in range(agents):
             if explore_t[i, 0]:
                 positions[i, :] = argmax_var_t[i, :]
@@ -710,7 +715,8 @@ def choi(title, sim_num, iterations, agents, positions, truth, prior, hyp, conso
     # 5) initialize vars and begin iterative portion of algorithm
     iteration = 0
     period = 0
-    centroids_t = positions
+    centroids_t = np.copy(positions)
+    prev_positions = np.copy(positions)         # store previous iteration positions to compute distance
     prob_explore_t = np.zeros((agents, 1))      # unnecessary for this algorithm, but keep for logging consistency
     explore_t = np.zeros((agents, 1))
 
@@ -742,7 +748,7 @@ def choi(title, sim_num, iterations, agents, positions, truth, prior, hyp, conso
 
             print(f"\nBegin Iteration {iteration} of Simulation {sim_num} of {title}") if console else None
 
-            # 7) record samples from each agent on an explore step (i.e., on a TSP tour)
+            # 7) record samples from each agent on an explore step (i.e., on a TSP tour) and log distance
             x_new = np.empty([0, 2])    # store new sample points
             y_new = np.empty([0, 1])    # store new samples
             id_new = np.empty([0, 1])   # store agent ids that sampled
@@ -757,6 +763,8 @@ def choi(title, sim_num, iterations, agents, positions, truth, prior, hyp, conso
                     id_new = np.vstack((id_new, i))
                 elif iteration > 0:     # 0th iteration is for initialization purposes only
                     print(f"Robot {i} exploited to {centroids_t[i, :]}") if console else None
+
+            distance = np.sqrt(np.sum((positions - prev_positions)**2, axis=1)).reshape(-1, 1)
 
             # 8) update GP model and estimates (Todescato "Estimate update")
             if fidelity == "S":
@@ -798,7 +806,8 @@ def choi(title, sim_num, iterations, agents, positions, truth, prior, hyp, conso
                                       "XMax": argmax_var_t[i, 0], "YMax": positions[i, 1],
                                       "VarMax": max_var_t[i, 0], "Var0": max_var_0,
                                       "XCentroid": centroids_t[i, 0], "YCentroid": centroids_t[i, 1],
-                                      "ProbExplore": prob_explore_t[i, 0], "Explore": explore_t[i, 0]})
+                                      "ProbExplore": prob_explore_t[i, 0], "Explore": explore_t[i, 0],
+                                      "Distance": distance[i, 0]})
                 for i in range(id_new.size):
                     sample_log.append(
                         {"SimNum": sim_num, "Iteration": iteration, "Period": period, "Fidelity": fidelity,
@@ -824,6 +833,7 @@ def choi(title, sim_num, iterations, agents, positions, truth, prior, hyp, conso
                     explore_t[i] = False
 
             # 14) update agent positions and delete points from TSP tour as we go (all points remain in tsp_tour_0)
+            prev_positions = np.copy(positions)
             for i in range(agents):
                 if explore_t[i, 0]:     # take next point in TSP tour, then remove it from the tour
                     positions[i, :] = tsp_tours_t[i][0, :]    # next destination is first point in i-th TSP tour
@@ -846,16 +856,16 @@ if __name__ == "__main__":
     Run a series of multiagent learning-coverage algorithm simulations.
     """
 
-    name = "Data/anti_two_corners"           # name of simulation, used as prefix of all associated input filenames
-    prefix = "Data/atc24"               # name of simulation, used as prefix of all associated output filenames
+    name = "Data/australia3"           # name of simulation, used as prefix of all associated input filenames
+    prefix = "Data/australia3"     # name of simulation, used as prefix of all associated output filenames
 
     agents = 4              # number of agents to use in simulation
-    iterations = 24        # number of iterations to run each simulation
-    simulations = 2        # number of simulations to run
+    iterations = 120       # number of iterations to run each simulation
+    simulations = 100        # number of simulations to run
     console = True          # boolean indicating if intermediate output should print to console
     log = True              # boolean indicating if output should be logged to CSV for performance analysis
-    plotter = Plotter([-eps, 1 + eps, -eps, 1 + eps])   # x_min, x_max, y_min, y_max
-    # plotter = None          # do not plot
+    # plotter = Plotter([-eps, 1 + eps, -eps, 1 + eps])   # x_min, x_max, y_min, y_max
+    plotter = None          # do not plot
     np.random.seed(1234)    # seed random generator for reproducibility
 
     truth = pd.read_csv(f"{name}_hifi.csv")         # CSV specifying ground truth (x,y,z=f(x,y)) triples
@@ -864,8 +874,8 @@ if __name__ == "__main__":
     null_prior = pd.read_csv("Data/null_prior.csv")      # Use a null prior
     human_prior = pd.read_csv(f"{name}_prior.csv")        # CSV specifying prior to condition GP upon before simulation
 
-    algorithms = ["todescato_nsf", "todescato_hsf", "todescato_hmf",
-                  "choi_nsf", "choi_hsf", "choi_hmf"]
+    algorithms = ["todescato_hmf", "todescato_hsf", "todescato_nsf",
+                  "choi_hmf", "choi_hsf", "choi_nsf"]
 
     for algo in algorithms:
 

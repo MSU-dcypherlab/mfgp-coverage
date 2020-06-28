@@ -2,7 +2,7 @@
 gaussian_process.py
 
 Implementation of single- and multi-fidelity Gaussian Process learning models capable of hyperparameter
-inference and mean/variance prediction. Optimization with numba improves runtime.
+inference and mean/variance prediction. Optimization with Numba improves runtime.
 
 created by: Paris Perdikaris, Department of Mechanical Engineer, MIT
 first created: 5/20/2017
@@ -15,10 +15,17 @@ last modified: 6/11/2020
 from __future__ import division
 from autograd import value_and_grad
 import autograd.numpy as np
+import numpy as fast_np
 from scipy.optimize import minimize
 from scipy.stats import norm
 from scipy.optimize import differential_evolution
 from numba import jit, jitclass, float64, int64
+
+import pandas as pd
+import matplotlib.pyplot as plt
+import timeit
+import time
+from multiprocessing import Pool
 
 
 class SFGP:
@@ -264,6 +271,7 @@ class SFGP:
         self.y = np.vstack((self.y, y_addition))
         self.updt_info(self.X, self.y)
 
+
 mfgp_spec = [
     ('D', int64),  # number of dimensions in model
     ('L', float64[:, :]),  # 2d array storing L matrix in Cholesky decomposition
@@ -278,7 +286,6 @@ mfgp_spec = [
 ]
 
 
-@jitclass(mfgp_spec)
 class MFGP:
     """
     A multi-fidelity (2-level) Gaussian Process class capable of hyperparameter inference and mean/variance prediction
@@ -316,7 +323,7 @@ class MFGP:
         :param len_H: [scalar] approximate hifi lengthscale of GP (accelerates hyperparameter inference convergence)
         :return: [1xk numpy array] of GP hyperparameters as initialized (k is number of hyperparameters)
         """
-        hyp = np.ones(self.D + 1)
+        hyp = np.ones(3)
         hyp[0] = 0
         self.idx_theta_L = np.arange(hyp.shape[0])
 
@@ -333,7 +340,29 @@ class MFGP:
 
         return hyp
 
-    def kernel(self, x, xp, hyp):
+    @staticmethod
+    # @jit(nopython=True, parallel=True)
+    def kernel_numba(x, xp, sigma, len):
+        """
+        Vectorized implementation of a radial basis function kernel.
+
+        :param x: [nxD numpy array] of points at which to evaluate kernel (D is number of dimensions of input space)
+        :param xp: [nxD numpy array] of points at which to evaluate kernel (D is number of dimensions of input space)
+        :param hyp: [1xk numpy array] of hyperparameters of GP utilized in computation (k is number of hyperparameters)
+        :return: [nxn numpy array] of kernel values between all n^2 pairs of points in (x, xp)
+        """
+        sigma = fast_np.exp(sigma)
+        len = fast_np.exp(len)
+        left = fast_np.expand_dims(x / len, 1)
+        top = fast_np.expand_dims(xp / len, 0)
+        diffs = fast_np.empty((left.shape[0], top.shape[1], top.shape[2]))
+        for row in range(left.shape[0]):
+            for col in range(top.shape[1]):
+                diffs[row, col, :] = left[row, 0, :] - top[0, col, :]
+        return sigma * fast_np.exp(-0.5 * fast_np.sum(diffs ** 2, axis=2))
+
+    @staticmethod
+    def kernel(x, xp, hyp):
         """
         Vectorized implementation of a radial basis function kernel.
 
@@ -404,6 +433,74 @@ class MFGP:
         result = minimize(value_and_grad(self.likelihood), self.hyp, jac=True,
                           method='L-BFGS-B', callback=self.callback)
         self.hyp = result.x
+
+    def predict_numba(self, X_star):
+        """
+        Return posterior mean and variance conditioned on provided self.X, self.y data
+        at a set of test points specified in X_star.
+
+        :param X_star: [nxD numpy array] of test points at which to predict (D is number of dimensions of input space)
+        :return: [2-value tuple] of
+            [nx1 numpy array] of mean predictions at points in X_star
+            [nxn numpy array] of covariance prediction of points in X_star (diagonal is variance at points in X_star)
+        """
+        hyp = self.hyp
+        theta_L = fast_np.array(hyp[self.idx_theta_L])
+        sigma_L, len_L = theta_L[1], theta_L[2]
+        theta_H = fast_np.array(hyp[self.idx_theta_H])
+        sigma_H, len_H = theta_H[1], theta_H[2]
+        rho = np.exp(hyp[-3])
+        mean_L = theta_L[0]
+        mean_H = rho * mean_L + theta_H[0]
+
+        X_L = self.X_L
+        y_L = self.y_L - mean_L
+        X_H = self.X_H
+        y_H = self.y_H - mean_H
+        L = self.L
+
+        y = np.vstack((y_L, y_H))
+
+        psi1 = rho * self.kernel_numba(X_star, X_L, sigma_L, len_L)
+        psi2 = rho ** 2 * self.kernel_numba(X_star, X_H, sigma_L, len_L) + \
+               self.kernel_numba(X_star, X_H, sigma_H, len_H)
+        psi = np.hstack((psi1, psi2))
+
+        alpha = np.linalg.solve(np.transpose(L), np.linalg.solve(L, y))
+        pred_u_star = mean_H + np.matmul(psi, alpha)
+
+        beta = np.linalg.solve(np.transpose(L), np.linalg.solve(L, psi.T))
+        var_u_star = rho ** 2 * self.kernel_numba(X_star, X_star, sigma_L, len_L) + \
+                     self.kernel_numba(X_star, X_star, sigma_H, len_H) - np.matmul(psi, beta)
+
+        return pred_u_star, var_u_star
+
+    def predict_multiproc(self, X_star, n_partitions=4):
+        """
+        Return posterior mean and variance conditioned on provided self.X, self.y data
+        at a set of test points specified in X_star. Partition X_star into smaller subsets to speed up computation
+
+        :param X_star: [nxD numpy array] of test points at which to predict (D is number of dimensions of input space)
+        :return: [2-value tuple] of
+            [nx1 numpy array] of mean predictions at points in X_star
+            [nxn numpy array] of covariance prediction of points in X_star (diagonal is variance at points in X_star)
+        """
+        mu_star = np.empty((X_star.shape[0], 1))
+        var_star = np.empty((X_star.shape[0], 1))
+        args = [X_star[int(i / n_partitions * X_star.shape[0]):
+                       int((i + 1) / n_partitions * X_star.shape[0]), :]
+                for i in range(n_partitions)]
+
+        with Pool(processes=n_partitions) as pool:
+            out = pool.map(self.predict, args)
+
+        for i in range(n_partitions):
+            mu_star[int(i / n_partitions * X_star.shape[0]):
+                    int((i + 1) / n_partitions * X_star.shape[0]), :] = out[i][0]
+            var_star[int(i / n_partitions * X_star.shape[0]):
+                     int((i + 1) / n_partitions * X_star.shape[0]), :] = out[i][1].diagonal().reshape(-1, 1)
+
+        return mu_star, var_star
 
     def predict(self, X_star):
         """
@@ -583,3 +680,56 @@ class MFGP:
         Bounds = ([Bounds[0][0], Bounds[1][0]], [Bounds[0][1], Bounds[1][1]])
         result = differential_evolution(self.get_neg_var, Bounds, args=(Thrd, c, X_L_new, X_H_new), init='random')
         return result.x[None, :], -result.fun
+
+#######################################################
+
+
+if __name__ == "__main__":
+    """
+    Test Numba implementation.
+    """
+
+    X_L = np.array([[0.1*i, 0.1*j] for i in range(10) for j in range(10)])
+    y_L = np.exp(-(X_L[:, 0] - X_L[:, 1]) ** 2 / 2).reshape(-1, 1)
+    X_H = np.array([[0.2*i, 0.2*j] for i in range(5) for j in range(5)])
+    y_H = 2 * np.exp(-(X_H[:, 0] - X_H[:, 1]) ** 2).reshape(-1, 1)
+    len_L = 0.1
+    len_H = 0.1
+    # plt.scatter(X_L[:, 0], X_L[:, 1], c=y_L[:, 0])
+    # plt.scatter(X_H[:, 0], X_H[:, 1], c=y_H[:, 0])
+    # plt.show()
+
+    model = MFGP(X_L, y_L, X_H, y_H, len_L, len_H)
+    model.updt_info(X_L, y_L, X_H, y_H)
+    # model.train()
+    model.hyp = np.array([  0.9249719 , -22.16275826,   9.96094206,   0.94798501,
+        -0.65403095,  -0.3546205 ,  -1.06534394,  -4.9591121 ,
+       -14.03820967])
+
+    X_star = np.array([[0.02*i, 0.02*j] for i in range(50) for j in range(50)])
+
+    sigma = 1
+    len = 0.1
+    hyp = [0, sigma, len]
+    iters = 5
+
+    start = time.time()
+    for i in range(iters):
+        print(f"Multiproc Iteration {i}")
+        mu_m, var_m = model.predict_multiproc(X_star, n_partitions=16)
+    end = time.time()
+    print(f"\nMultiproc total time: {(end - start)}")
+    print(f"Multiproc time per iter: {(end - start)/iters}\n")
+
+    start = time.time()
+    for i in range(iters):
+        print(f"Iteration {i}")
+        mu, var = model.predict(X_star)
+    end = time.time()
+    print(f"\nOriginal total time: {(end - start)}")
+    print(f"Original time per iter: {(end - start) / iters}\n")
+
+    print(f"Mu diff: {np.sum(mu - mu_m)}")
+    print(f"Var diff: {np.sum(var - var_m)}")
+
+

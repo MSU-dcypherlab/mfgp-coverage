@@ -114,3 +114,12 @@ then *cover* areas with respect to the distribution.
 ![Distance](../Images/australia3_dist.png)
 
 ![Total Distance](../Images/australia3_total_dist.png)
+
+#### Follow-up
+- Implemented multiprocessing parallelization with good results
+- See [simulator_multiproc.py](../simulator_multiproc.py) implementation
+- Tested with todescato_nsf and choi_nsf at 120 iterations with 4 repeats and yielded
+
+| Multiprocessing Time | Standard Time |
+| --- | --- |
+| 1034.8s | 1770.5s|

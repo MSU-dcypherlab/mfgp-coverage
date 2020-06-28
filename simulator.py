@@ -477,6 +477,117 @@ def choi_double(period):
 #######################################################################################################################
 
 
+def lloyd(title, sim_num, iterations, agents, positions, truth, prior, hyp, console, plotter, log):
+    """
+    Implement LLoyd's Algorithm. Assume perfect knowledge of sensing function by agents.
+    Note that many parameters are unused; this is simply in order to keep the interface the same with
+    calls to choi and todescato
+
+    :param sim_num: [scalar] index number of current simulation (relevant when running multiple simulations)
+    :param iterations: [scalar] number of iterations to run simulation
+    :param agents: [scalar] number of agents being simulated
+    :param positions: [nAgentsx2 numpy array] of initial (x,y) points of agents
+    :param truth: [nx3 pandas DF] triples of (x,y,z=f(x,y)) where z=f is the ground truth function at each point
+    :param prior: [mx3 pandas DF] triples of (x,y,z~f(x,y)) where z~f is a low-fidelity prior estimate of the ground
+                  truth function at each point, and m << n such that the prior estimate is given only at a few points
+    :param hyp: [1x9 pandas DF] of log-scaled hyperparameters to use in MFGP model if multi-fidelity simulation
+                log-scaled hyp take the form [mu_lo, s^2_lo, L_lo, mu_hi, s^2_hi, L_hi, rho, noise_lo, noise_hi]
+                OR
+                [1x4 pandas DF] of log-scaled hyperparameters to use in SFGP model if single-fidelity simulation
+                log-scaled hyp take the form [mu, s^2, l, noise]
+    :param console: boolean indicating whether to display simulation progress on console
+    :param plotter: boolean indicating whether to plot simulation progress using plotter.py
+    :param log: boolean indicating whether to log simulation progress into CSV for performance analysis
+    :return: [3 value tuple] of
+        [list of dictionaries] log of loss by iteration
+        [list of dictionaries] log of agent positions and actions by iteration
+        [list of dictionaries] log of samples taken by agent over the course of simulation
+    """
+    # 0) initialize logging lists, plotter, and other unnecessary variables needed only for logging
+    loss_log, agent_log, sample_log = [], [], [] if log else None
+    plotter.reset() if plotter else None
+    fidelity = "NA"
+    max_var_0 = 0
+    prob_explore_t = np.zeros((agents, 1))
+    explore_t = np.zeros((agents, 1))
+    argmax_var_t = np.zeros((agents, 1))
+    max_var_t = np.zeros((agents, 1))
+
+    print(line_break + title + line_break)
+
+    # 2) initialize arrays of y truth points, loss and bounding box of domain
+    truth_arr = np.vstack(truth.values.tolist())
+    y = truth_arr[:, [2]]  # all rows, third column is ground truth y points
+    bounding_box = np.array([np.amin(truth_arr[:, 0]), np.amax(truth_arr[:, 0]),
+                             np.amin(truth_arr[:, 1]), np.amax(truth_arr[:, 1])])  # [x_min, x_max, y_min, y_max]
+    loss = []
+
+    # 5) compute prediction given prior and initialize relevant explore/exploit decision variables
+    prev_positions = np.copy(positions)     # store previous iteration positions to compute distance
+    centroids_t = np.copy(positions)        # initialize centroids governing Lloyd iterations to current positions
+    period = 0                              # irrelevant in this simulation, but necessary for logging consistency
+
+    # 6) begin iterative portion of algorithm
+    for iteration in range(iterations):
+
+        print(f"\nBegin Iteration {iteration} of Simulation {sim_num} of {title}") if console else None
+
+        # 7) compute distance travelled since last iteration
+        distance = np.sqrt(np.sum((positions - prev_positions) ** 2, axis=1)).reshape(-1, 1)
+
+        # 8) compute loss given current positions
+        loss_vor = voronoi_bounded(positions, bounding_box)
+        loss_t = compute_loss(loss_vor, truth_arr)
+        loss.append(loss_t)
+
+        # 9) update partitions and centroids given perfect environmental knowledge (take truth arr vals for mu_star)
+        lloyd_vor = voronoi_bounded(centroids_t, bounding_box)
+        centroids_t = compute_centroids(lloyd_vor, truth_arr[[0, 1], :], truth_arr[:, [2]])
+
+        # 12) print to console, update log, and plot for this iteration
+        # (note: period is logged in all simulations for consistency, and DOES NOT apply here)
+        if console:
+            print(f"Period {period}")
+            print(f"Fidelity {fidelity}")
+            print(f"Current loss: {loss_t}")
+            print(f"Max var by cell: {max_var_t.flatten()}")
+            print(f"Normalizing max var: {max_var_0}")
+            print(f"Probability of exploration: {prob_explore_t.flatten()}")
+            print(f"Decision of exploration: {explore_t.flatten()}")
+            print(f"End Iteration {iteration}")
+        if log:
+            loss_log.append({"SimNum": sim_num, "Iteration": iteration, "Period": period,
+                             "Fidelity": fidelity, "Loss": loss_t})
+            sample_log.append({"SimNum": sim_num, "Iteration": iteration, "Period": period, "Fidelity": fidelity,
+                               "Agent": "NA", "X": "NA", "Y": "NA", "Sample": "NA"})
+            for i in range(agents):
+                agent_log.append({"SimNum": sim_num, "Iteration": iteration, "Period": period,
+                                  "Fidelity": fidelity, "Agent": i,
+                                  "X": positions[i, 0], "Y": positions[i, 1],
+                                  "XMax": argmax_var_t[i, 0], "YMax": positions[i, 1],
+                                  "VarMax": max_var_t[i, 0], "Var0": max_var_0,
+                                  "XCentroid": centroids_t[i, 0], "YCentroid": centroids_t[i, 1],
+                                  "ProbExplore": prob_explore_t[i, 0], "Explore": explore_t[i, 0],
+                                  "Distance": distance[i, 0]})
+        if plotter:
+            plotter.plot_explore(prob_explore_t, explore_t)
+            plotter.plot_mean(truth_arr[[0, 1], :], truth_arr[:, [2]])
+            plotter.plot_var(truth_arr[[0, 1], :], np.zeros((truth_arr.shape[0], truth_arr.shape[0])))
+            plotter.plot_loss_vor(loss_vor, truth_arr, explore_t)
+            plotter.plot_loss(loss)
+            plotter.plot_lloyd_vor(lloyd_vor, centroids_t, truth_arr)
+            plotter.show()
+
+        # 14) update agent positions (Todescato "Target-Points transmission")
+        prev_positions = np.copy(positions)
+        positions = np.copy(centroids_t)
+
+    # 15) return log dictionary lists to driver function, which will save them into a dataframe
+    # note that since we assume perfect knowledge in this algorithm, sample_log is filled with NAs
+    return loss_log, agent_log, sample_log
+
+
+
 def todescato(title, sim_num, iterations, agents, positions, truth, prior, hyp, console, plotter, log):
     """
     Implement Algorithm 1 of Todescato et. al. "Multi-robots Gaussian estimation and coverage..." using a
@@ -513,7 +624,7 @@ def todescato(title, sim_num, iterations, agents, positions, truth, prior, hyp, 
     else:
         raise TypeError("Hyperparameters must be of length 4 (single-fidelity) or 9 (multi-fidelity)")
 
-    print(line_break + title + line_break) if console else None
+    print(line_break + title + line_break)
 
     # 1) initialize model with hyperparameters and empty prior
     if fidelity == "S":
@@ -683,7 +794,7 @@ def choi(title, sim_num, iterations, agents, positions, truth, prior, hyp, conso
     else:
         raise TypeError("Hyperparameters must be of length 4 (single-fidelity) or 9 (multi-fidelity)")
 
-    print(line_break + title + line_break) if console else None
+    print(line_break + title + line_break)
 
     # 1) initialize model with hyperparameters and empty prior
     if fidelity == "S":

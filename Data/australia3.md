@@ -117,7 +117,7 @@ then *cover* areas with respect to the distribution.
 
 #### Follow-up
 - Implemented multiprocessing parallelization with good results
-- See [simulator_multiproc.py](../simulator_multiproc.py) implementation
+- See [simulator_multiproc.py](../runner.py) implementation
 - Tested with todescato_nsf and choi_nsf at 120 iterations with 4 repeats and yielded
 
 | Multiprocessing Time | Standard Time |

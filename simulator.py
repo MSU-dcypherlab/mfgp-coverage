@@ -33,7 +33,10 @@ import mlrose
 eps = 0.1
 
 """ Delimiter used in console output """
-line_break = "\n" + "".join(["*" for i in range(100)]) + "\n"
+line_break = "\n" + "".join(["-" for i in range(100)]) + "\n"
+
+""" Delimiter used in console output """
+slash_break = "\n" + "".join(["/" for i in range(100)]) + "\n"
 
 
 #######################################################################################################################
@@ -464,12 +467,12 @@ def choi_threshold(var_star):
 def choi_double(period):
     """
     Given current period of Choi doubling algorithm, determine the number of iterations in this period
-    Begin with 10 iterations in first period, and double for all subsequent periods.
+    Begin with 16 iterations in first period, and double for all subsequent periods.
 
     :param period: [scalar] current period of Choi doubling algorithm
     :return: [scalar] number of iterations in this period
     """
-    return 8*2**period
+    return 16*2**period
 
 
 #######################################################################################################################
@@ -477,7 +480,7 @@ def choi_double(period):
 #######################################################################################################################
 
 
-def lloyd(title, sim_num, iterations, agents, positions, truth, prior, hyp, console, plotter, log):
+def lloyd(title, sim_num, iterations, agents, positions, truth, sigma_n, prior, hyp, console, plotter, log):
     """
     Implement LLoyd's Algorithm. Assume perfect knowledge of sensing function by agents.
     Note that many parameters are unused; this is simply in order to keep the interface the same with
@@ -488,6 +491,7 @@ def lloyd(title, sim_num, iterations, agents, positions, truth, prior, hyp, cons
     :param agents: [scalar] number of agents being simulated
     :param positions: [nAgentsx2 numpy array] of initial (x,y) points of agents
     :param truth: [nx3 pandas DF] triples of (x,y,z=f(x,y)) where z=f is the ground truth function at each point
+    :param sigma_n: [scalar] std. dev. of sample noise such that sample noise is iid N(0, sigma_n**2)
     :param prior: [mx3 pandas DF] triples of (x,y,z~f(x,y)) where z~f is a low-fidelity prior estimate of the ground
                   truth function at each point, and m << n such that the prior estimate is given only at a few points
     :param hyp: [1x9 pandas DF] of log-scaled hyperparameters to use in MFGP model if multi-fidelity simulation
@@ -542,7 +546,7 @@ def lloyd(title, sim_num, iterations, agents, positions, truth, prior, hyp, cons
 
         # 9) update partitions and centroids given perfect environmental knowledge (take truth arr vals for mu_star)
         lloyd_vor = voronoi_bounded(centroids_t, bounding_box)
-        centroids_t = compute_centroids(lloyd_vor, truth_arr[[0, 1], :], truth_arr[:, [2]])
+        centroids_t = compute_centroids(lloyd_vor, truth_arr[:, [0, 1]], truth_arr[:, [2]])
 
         # 12) print to console, update log, and plot for this iteration
         # (note: period is logged in all simulations for consistency, and DOES NOT apply here)
@@ -571,8 +575,8 @@ def lloyd(title, sim_num, iterations, agents, positions, truth, prior, hyp, cons
                                   "Distance": distance[i, 0]})
         if plotter:
             plotter.plot_explore(prob_explore_t, explore_t)
-            plotter.plot_mean(truth_arr[[0, 1], :], truth_arr[:, [2]])
-            plotter.plot_var(truth_arr[[0, 1], :], np.zeros((truth_arr.shape[0], truth_arr.shape[0])))
+            plotter.plot_mean(truth_arr[:, [0, 1]], truth_arr[:, [2]])
+            plotter.plot_var(truth_arr[:, [0, 1]], np.zeros((truth_arr.shape[0], truth_arr.shape[0])))
             plotter.plot_loss_vor(loss_vor, truth_arr, explore_t)
             plotter.plot_loss(loss)
             plotter.plot_lloyd_vor(lloyd_vor, centroids_t, truth_arr)
@@ -587,8 +591,7 @@ def lloyd(title, sim_num, iterations, agents, positions, truth, prior, hyp, cons
     return loss_log, agent_log, sample_log
 
 
-
-def todescato(title, sim_num, iterations, agents, positions, truth, prior, hyp, console, plotter, log):
+def todescato(title, sim_num, iterations, agents, positions, truth, sigma_n, prior, hyp, console, plotter, log):
     """
     Implement Algorithm 1 of Todescato et. al. "Multi-robots Gaussian estimation and coverage..." using a
     single-fidelity GP model.
@@ -599,6 +602,7 @@ def todescato(title, sim_num, iterations, agents, positions, truth, prior, hyp, 
     :param agents: [scalar] number of agents being simulated
     :param positions: [nAgentsx2 numpy array] of initial (x,y) points of agents
     :param truth: [nx3 pandas DF] triples of (x,y,z=f(x,y)) where z=f is the ground truth function at each point
+    :param sigma_n: [scalar] std. dev. of sample noise such that sample noise is iid N(0, sigma_n**2)
     :param prior: [mx3 pandas DF] triples of (x,y,z~f(x,y)) where z~f is a low-fidelity prior estimate of the ground
                   truth function at each point, and m << n such that the prior estimate is given only at a few points
     :param hyp: [1x9 pandas DF] of log-scaled hyperparameters to use in MFGP model if multi-fidelity simulation
@@ -676,7 +680,8 @@ def todescato(title, sim_num, iterations, agents, positions, truth, prior, hyp, 
             if explore_t[i] == 1:  # this robot is on an explore step: take sample
                 x_sample = positions[i, :]
                 sample_idx = np.logical_and(truth_arr[:, 0] == x_sample[0], truth_arr[:, 1] == x_sample[1])
-                y_sample = truth_arr[sample_idx, 2]  # retrieve f_val at matching point
+                y_sample = truth_arr[sample_idx, 2] + \
+                           np.random.default_rng().normal(loc=0, scale=sigma_n)  # f + noise
                 print(f"Robot {i} explored {x_sample} and sampled {y_sample}") if console else None
                 x_new = np.vstack((x_new, x_sample))
                 y_new = np.vstack((y_new, y_sample))
@@ -756,7 +761,7 @@ def todescato(title, sim_num, iterations, agents, positions, truth, prior, hyp, 
     return loss_log, agent_log, sample_log
 
 
-def choi(title, sim_num, iterations, agents, positions, truth, prior, hyp, console, plotter, log):
+def choi(title, sim_num, iterations, agents, positions, truth, sigma_n, prior, hyp, console, plotter, log):
     """
     Implement "switching" algorithm of Choi et. al.  "Swarm intelligence for achieving the global maximum..." with
     a doubling trick inspired by Besson et. al. "What Doubling Tricks Can and Can't Do..."
@@ -769,6 +774,7 @@ def choi(title, sim_num, iterations, agents, positions, truth, prior, hyp, conso
     :param agents: [scalar] number of agents being simulated
     :param positions: [nAgentsx2 numpy array] of initial (x,y) points of agents
     :param truth: [nx3 pandas DF] triples of (x,y,z=f(x,y)) where z=f is the ground truth function at each point
+    :param sigma_n: [scalar] std. dev. of sample noise such that sample noise is iid N(0, sigma_n**2)
     :param prior: [mx3 pandas DF] triples of (x,y,z~f(x,y)) where z~f is a low-fidelity prior estimate of the ground
                   truth function at each point, and m << n such that the prior estimate is given only at a few points
     :param hyp: [1x9 pandas DF] of log-scaled hyperparameters to use in MFGP model if multi-fidelity simulation
@@ -867,7 +873,8 @@ def choi(title, sim_num, iterations, agents, positions, truth, prior, hyp, conso
                 if explore_t[i] == 1:   # this robot is on an explore step/TSP tour: take sample
                     x_sample = positions[i, :]
                     sample_idx = np.logical_and(truth_arr[:, 0] == x_sample[0], truth_arr[:, 1] == x_sample[1])
-                    y_sample = truth_arr[sample_idx, 2]  # retrieve f_val at matching point
+                    y_sample = truth_arr[sample_idx, 2] + \
+                               np.random.default_rng().normal(loc=0, scale=sigma_n)  # f + noise
                     print(f"Robot {i} explored {x_sample} and sampled {y_sample}") if console else None
                     x_new = np.vstack((x_new, x_sample))
                     y_new = np.vstack((y_new, y_sample))
@@ -960,78 +967,3 @@ def choi(title, sim_num, iterations, agents, positions, truth, prior, hyp, conso
 
     # 17) return log dictionary lists to driver function, which will save them into a dataframe
     return loss_log, agent_log, sample_log
-
-
-if __name__ == "__main__":
-    """
-    Run a series of multiagent learning-coverage algorithm simulations.
-    """
-
-    name = "Data/australia3"           # name of simulation, used as prefix of all associated input filenames
-    prefix = "Data/australia3"     # name of simulation, used as prefix of all associated output filenames
-
-    agents = 4              # number of agents to use in simulation
-    iterations = 120       # number of iterations to run each simulation
-    simulations = 100        # number of simulations to run
-    console = True          # boolean indicating if intermediate output should print to console
-    log = True              # boolean indicating if output should be logged to CSV for performance analysis
-    # plotter = Plotter([-eps, 1 + eps, -eps, 1 + eps])   # x_min, x_max, y_min, y_max
-    plotter = None          # do not plot
-    np.random.seed(1234)    # seed random generator for reproducibility
-
-    truth = pd.read_csv(f"{name}_hifi.csv")         # CSV specifying ground truth (x,y,z=f(x,y)) triples
-    mf_hyp = pd.read_csv(f"{name}_mf_hyp.csv")      # CSV specifying multi-fidelity GP hyperparameters
-    sf_hyp = pd.read_csv(f"{name}_sf_hyp.csv")      # CSV specifying single-fidelity GP hyperparameters
-    null_prior = pd.read_csv("Data/null_prior.csv")      # Use a null prior
-    human_prior = pd.read_csv(f"{name}_prior.csv")        # CSV specifying prior to condition GP upon before simulation
-
-    algorithms = ["todescato_hmf", "todescato_hsf", "todescato_nsf",
-                  "choi_hmf", "choi_hsf", "choi_nsf"]
-
-    for algo in algorithms:
-
-        out_name = f"{prefix}_{algo}"
-        loss_log, agent_log, sample_log = [], [], []  # reset logging lists for this algo
-
-        for sim_num in range(simulations):
-            print(line_break + f"Simulation {sim_num} : {algo}" + line_break)
-
-            # 1) initialize agent positions
-            x_positions = [random.random() for i in range(agents)]
-            y_positions = [random.random() for i in range(agents)]
-            positions = np.column_stack((x_positions, y_positions))
-
-            # 2) select hyperparameters
-            if "mf" in algo:
-                hyp = mf_hyp
-            else:
-                hyp = sf_hyp
-
-            # 3) select prior
-            if "_n" in algo:
-                prior = null_prior
-            else:
-                prior = human_prior
-
-            # 4) run simulation
-            if "choi" in algo:
-                loss_log_t, agent_log_t, sample_log_t = \
-                    choi(algo, sim_num, iterations, agents, positions, truth, prior, hyp, console, plotter, log)
-            else:
-                loss_log_t, agent_log_t, sample_log_t = \
-                    todescato(algo, sim_num, iterations, agents, positions, truth, prior, hyp, console, plotter, log)
-
-            # 3) extend logging lists to include current simulation's results
-            loss_log.extend(loss_log_t)
-            agent_log.extend(agent_log_t)
-            sample_log.extend(sample_log_t)
-
-        # save dataframes from simulation results for post-analysis
-        if log:
-            loss_df = pd.DataFrame(loss_log)
-            loss_df.to_csv(out_name + "_loss.csv")
-            agent_df = pd.DataFrame(agent_log)
-            agent_df.to_csv(out_name + "_agent.csv")
-            sample_df = pd.DataFrame(sample_log)
-            sample_df.to_csv(out_name + "_sample.csv")
-

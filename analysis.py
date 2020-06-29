@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 
 light_rgb = [(1, 0, 0), (0, 1, 0), (0, 0, 1)]
 dark_rgb = [(0.5, 0, 0), (0, 0.5, 0), (0, 0, 0.5)]
-colors = light_rgb + dark_rgb
+colors = light_rgb + dark_rgb + [(1, 0, 1)]
 
 
 def compute_dist(agents):
@@ -56,7 +56,7 @@ def plot_loss(losses, name=None):
 
     # plot df of all simulation losses
     plt.figure()
-    loss_df.plot(color=colors)
+    loss_df[-10:].plot(color=colors)
     plt.title("Loss by Iteration")
     plt.savefig(f"Images/{name}_loss.png") if name is not None else None
     plt.show()
@@ -87,6 +87,7 @@ def plot_regret(losses, name=None):
     :return:
     """
     regret_df = None
+    min_loss = losses["lloyd"]["Loss"].min()
     for title, df in losses.items():
 
         # compute average of loss over iterations
@@ -96,7 +97,7 @@ def plot_regret(losses, name=None):
 
         # subtract min value from all entries
         last_loss = mean_loss.iloc[-1]
-        min_loss = mean_loss.min()
+        # min_loss = mean_loss.min()
         norm_loss = np.maximum(mean_loss - min_loss, 0)
 
         # cumulative-sum normalized loss to obtain regret
@@ -111,6 +112,7 @@ def plot_regret(losses, name=None):
     # plot df of all simulation regrets
     plt.figure()
     regret_df.plot(color=colors)
+    plt.ylim((0, 0.2))
     plt.title("Regret by Iteration")
     plt.savefig(f"Images/{name}_regret.png") if name is not None else None
     plt.show()
@@ -253,12 +255,14 @@ def plot_total_dist(agents, name=None):
 if __name__ == "__main__":
 
     # define simulation names to be analyzed
-    sim_name = "australia3"
+    sim_name = "australia4"
     prefix = f"Data/{sim_name}"
     algorithms = ["todescato", "choi"]
-    fidelities = ["hmf", "hsf", "nsf"]
+    fidelities = ["nsf", "hsf", "hmf"]
     names = [f"{prefix}_{a}_{f}" for a in algorithms for f in fidelities]
+    names.append(f"{prefix}_lloyd")
     titles = [f"{a}_{f}" for a in algorithms for f in fidelities]
+    titles.append("lloyd")
 
     # define dtypes to be loaded
     loss_dtypes = {"SimNum": int, "Iteration": int, "Period": int,
@@ -291,10 +295,10 @@ if __name__ == "__main__":
     compute_dist(agents)
 
     # plot analysis
-    plot_loss(losses, sim_name)
+    # plot_loss(losses, sim_name)
     plot_regret(losses, sim_name)
-    plot_var(agents, sim_name)
-    plot_explore(agents, sim_name)
-    plot_dist(agents, sim_name)
-    plot_total_dist(agents, sim_name)
+    # plot_var(agents, sim_name)
+    # plot_explore(agents, sim_name)
+    # plot_dist(agents, sim_name)
+    # plot_total_dist(agents, sim_name)
 

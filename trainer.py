@@ -24,8 +24,8 @@ def train_sfgp(name):
     """
 
     # 1) load training data
-    sifi = np.loadtxt("Data/" + name + "_sifi_train.csv",
-                      skiprows=1, delimiter=',')                # train from mix of hifi and lofi sample data
+    # sifi = np.loadtxt(f"Data/{name}_sifi_train.csv", skiprows=1, delimiter=',')     # train from mix of hifi and lofi
+    sifi = np.loadtxt(f"Data/{name}_hifi_train.csv", skiprows=1, delimiter=',')     # train from hifi only
     labels = ['mu_sf', 's^2_sf', 'L_sf', 'noise_sf']
 
     # 2) reshape training data from CSV to valid format
@@ -38,6 +38,7 @@ def train_sfgp(name):
 
     # 4) train model and display results
     model.train()
+    model.hyp[0] = np.mean(y)       # override trained y
     hyp = model.hyp
     ehyp = np.exp(model.hyp)
     for i in range(len(labels)):
@@ -98,7 +99,7 @@ if __name__ == "__main__":
     """
 
     np.random.seed(1234)        # seed for reproducibility
-    name = "australia3"        # name of distribution to infer from
-    train_sfgp(name)
+    name = "australia5"        # name of distribution to infer from
+    # train_sfgp(name)
     train_mfgp(name)
 

@@ -55,7 +55,10 @@ class SFGP:
         logsigma_n = np.array([-4.0])
         hyp = np.concatenate([hyp, logsigma_n])
 
-        # manually override starting lengthscale values to accelerate convergence
+        # manually override starting mu value to accelerate convergence
+        hyp[0] = 0.5
+
+        # manually override starting lengthscale value to accelerate convergence
         hyp[2] = np.log(len)
 
         return hyp
@@ -83,7 +86,8 @@ class SFGP:
         :return: [scalar] negative log-marginal likelihood of model
         """
         X = self.X
-        y = self.y
+        mean = self.hyp[0]
+        y = self.y - mean
 
         N = y.shape[0]
 
@@ -311,6 +315,10 @@ class MFGP:
         rho = np.array([1.0])
         sigma_n = np.array([0.01, 0.01])
         hyp = np.concatenate((hyp, rho, sigma_n))
+
+        # manually override starting mu values to accelerate convergence
+        hyp[0] = 0.2
+        hyp[3] = 0.2
 
         # manually override starting lengthscale values to accelerate convergence
         hyp[2] = np.log(len_L)

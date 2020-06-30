@@ -301,7 +301,7 @@ def australian_wildfires():
 
     :return: None
     """
-    out_name = "australia5"
+    # out_name = "australia5"
     hifi_sigma_n = 0.1      # std. dev. of hifi noise
     lofi_sigma_n = 0.25     # std. dev. of lofi noise
 

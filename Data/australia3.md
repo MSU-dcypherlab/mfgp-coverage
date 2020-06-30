@@ -41,7 +41,7 @@ then *cover* areas with respect to the distribution.
     
 - 121-point grid at each 0.1 from Lofi used to create human prior
 
-![Distribution](../Images/australia3_distribution.png)
+![Distribution](../Images/australia3/australia3_distribution.png)
 
 #### Runtime:
 - Todescato Human MF: ~4 hrs
@@ -99,21 +99,21 @@ then *cover* areas with respect to the distribution.
     
 #### Plots
     
-![Loss](../Images/australia3_loss.png)
+![Loss](../Images/australia3/australia3_loss.png)
 
-![Zoomed Loss](../Images/australia3_loss_zoomed.png)
+![Zoomed Loss](../Images/australia3/australia3_loss_zoomed.png)
 
-![Rolling Loss](../Images/australia3_loss_rolling.png)
+![Rolling Loss](../Images/australia3/australia3_loss_rolling.png)
 
-![Regret](../Images/australia3_regret.png)
+![Regret](../Images/australia3/australia3_regret.png)
 
-![Var](../Images/australia3_var.png)
+![Var](../Images/australia3/australia3_var.png)
 
-![Explore](../Images/australia3_explore.png)
+![Explore](../Images/australia3/australia3_explore.png)
 
-![Distance](../Images/australia3_dist.png)
+![Distance](../Images/australia3/australia3_dist.png)
 
-![Total Distance](../Images/australia3_total_dist.png)
+![Total Distance](../Images/australia3/australia3_total_dist.png)
 
 #### Follow-up
 - Implemented multiprocessing parallelization with good results

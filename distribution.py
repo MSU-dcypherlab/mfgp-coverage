@@ -431,7 +431,7 @@ def australian_wildfires():
         lofi_train_df.to_csv(f"Data/{out_name}_lofi_train.csv", index=False)
         # sifi_train_df.to_csv(f"Data/{out_name}_sifi_train.csv", index=False)
         prior_df.to_csv(f"Data/{out_name}_prior.csv", index=False)
-        fig.savefig(f"Images/{out_name}_distribution.png")
+    fig.savefig(f"Images/{out_name}_distribution.png")
 
     print("Done.")
 

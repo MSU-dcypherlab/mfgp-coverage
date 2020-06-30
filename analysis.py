@@ -78,7 +78,7 @@ def plot_loss(losses, name=None):
                         color=colors[i], alpha=0.2)
     plt.title("Loss by Iteration")
     plt.ylim((0.005, 0.01))
-    plt.savefig(f"Images/{name}_loss.png") if name is not None else None
+    plt.savefig(f"Images/{name}/{name}_loss.png") if name is not None else None
     plt.show()
 
     # plot closeup of simulation loss at start
@@ -86,7 +86,7 @@ def plot_loss(losses, name=None):
     plt.figure()
     trunc.plot(color=colors)
     plt.title("Loss by Iteration: Zoomed")
-    plt.savefig(f"Images/{name}_loss_zoomed.png") if name is not None else None
+    plt.savefig(f"Images/{name}/{name}_loss_zoomed.png") if name is not None else None
     plt.show()
 
     # compute rolling loss and plot
@@ -95,7 +95,7 @@ def plot_loss(losses, name=None):
     plt.figure()
     rolling_mean_loss_df.plot(color=colors)
     plt.title("Moving Average Loss by Iteration (n=10)")
-    plt.savefig(f"Images/{name}_loss_rolling.png") if name is not None else None
+    plt.savefig(f"Images/{name}/{name}_loss_rolling.png") if name is not None else None
     plt.show()
 
 
@@ -154,7 +154,7 @@ def plot_regret(losses, name=None):
                         y2=regret_df.iloc[:, i] + 2*std_regret_df.iloc[:, i] / sqrt(num_simulations),
                         color=colors[i], alpha=0.2)
     plt.title("Regret by Iteration")
-    plt.savefig(f"Images/{name}_regret.png") if name is not None else None
+    plt.savefig(f"Images/{name}/{name}_regret.png") if name is not None else None
     plt.show()
 
 
@@ -200,7 +200,7 @@ def plot_var(agents, name=None):
                         y2=var_df.iloc[:, i] + 2*std_var_df.iloc[:, i] / sqrt(num_simulations),
                         color=colors[i], alpha=0.2)
     plt.title("Max Variance by Iteration")
-    plt.savefig(f"Images/{name}_var.png") if name is not None else None
+    plt.savefig(f"Images/{name}/{name}_var.png") if name is not None else None
     plt.show()
 
 
@@ -229,7 +229,7 @@ def plot_explore(agents, name=None):
     plt.figure()
     explore_df.plot(color=colors)
     plt.title("Probability of Exploration by Iteration")
-    plt.savefig(f"Images/{name}_explore.png") if name is not None else None
+    plt.savefig(f"Images/{name}/{name}_explore.png") if name is not None else None
     plt.show()
 
 
@@ -292,7 +292,7 @@ def plot_dist(agents, name=None):
                         y2=dist_df.iloc[:, i] + 2*std_dist_df.iloc[:, i] / sqrt(num_simulations),
                         color=colors[i], alpha=0.2)
     plt.title("Distance Travelled by Iteration")
-    plt.savefig(f"Images/{name}_dist.png") if name is not None else None
+    plt.savefig(f"Images/{name}/{name}_dist.png") if name is not None else None
     plt.show()
 
     # plot df of all total distances traveled
@@ -304,7 +304,7 @@ def plot_dist(agents, name=None):
                         y2=total_dist_df.iloc[:, i] + 2*std_total_dist_df.iloc[:, i] / sqrt(num_simulations),
                         color=colors[i], alpha=0.2)
     plt.title("Total Distance Travelled by Iteration")
-    plt.savefig(f"Images/{name}_total_dist.png") if name is not None else None
+    plt.savefig(f"Images/{name}/{name}_total_dist.png") if name is not None else None
     plt.show()
 
 
@@ -358,7 +358,7 @@ def plot_samples(samples, name=None):
                         y2=sample_df.iloc[:, i] + 2*std_sample_df.iloc[:, i] / sqrt(num_simulations),
                         color=colors[i], alpha=0.2)
     plt.title("Mean # Samples by Iteration")
-    plt.savefig(f"Images/{name}_samples.png") if name is not None else None
+    plt.savefig(f"Images/{name}/{name}_samples.png") if name is not None else None
     plt.show()
 
     # plot df of mean cumulative sum of samples by iteration
@@ -370,7 +370,7 @@ def plot_samples(samples, name=None):
                         y2=total_sample_df.iloc[:, i] + 2*std_total_sample_df.iloc[:, i] / sqrt(num_simulations),
                         color=colors[i], alpha=0.2)
     plt.title("Mean Cumulative Sum of # Samples by Iteration")
-    plt.savefig(f"Images/{name}_total_samples.png") if name is not None else None
+    plt.savefig(f"Images/{name}/{name}_total_samples.png") if name is not None else None
     plt.show()
 
 

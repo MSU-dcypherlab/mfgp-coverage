@@ -386,7 +386,10 @@ def compute_sample_clusters(vor, sample_points):
     :return: [list of nx2 numpy arrays] where list entry i contains an nx2 numpy array of (x,y) pairs at which
              samples must be taken by agent i (i.e., contains points inside of cell i)
     """
-    clusters = []
+    clusters = [np.empty((0, 2)) for i in range(len(vor.filtered_regions))]
+
+    if sample_points.shape[0] == 0:     # if no sample points are provided, return
+        return clusters
 
     # 1) iterate over each cell in Voronoi partition and determine the sample points inside of this cell
     for i, cell in enumerate(vor.filtered_regions):
@@ -397,7 +400,7 @@ def compute_sample_clusters(vor, sample_points):
         in_points = sample_points[in_indices, :]
 
         # 3) save sample points inside of this cell into list
-        clusters.append(in_points)
+        clusters[i] = in_points
 
         # plt.figure()                                        # debug sample point clusters
         # vertices = vor.vertices[cell + [cell[0]], :]

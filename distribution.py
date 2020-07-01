@@ -301,9 +301,9 @@ def australian_wildfires():
 
     :return: None
     """
-    # out_name = "australia5"
-    hifi_sigma_n = 0.1      # std. dev. of hifi noise
-    lofi_sigma_n = 0.25     # std. dev. of lofi noise
+    out_name = "australia6"
+    hifi_sigma_n = 0.1     # std. dev. of hifi noise
+    lofi_sigma_n = 0        # std. dev. of lofi noise
 
     # 1) read in raw CSV from Kaggle and filter to single date
     fires = pd.read_csv("Kaggle/AustralianWildfires/fire_archive_M6_96619.csv")
@@ -362,7 +362,7 @@ def australian_wildfires():
     # sifi_train = np.vstack((hifi_train, lofi_train))
 
     # 9) construct small prior array for initial conditioning in simulation WITH ADDED SAMPLE NOISE
-    sample_delta = 0.2
+    sample_delta = 0.5
     sample_grid = np.arange(0, 1 + sample_delta, sample_delta)
     x_prior = np.array([[i, j] for i in sample_grid for j in sample_grid])
     prior_idx = [np.logical_and(np.isclose(x[0], x_star[:, 0]), np.isclose(x[1], x_star[:, 1])) for x in x_prior]
@@ -431,7 +431,7 @@ def australian_wildfires():
         lofi_train_df.to_csv(f"Data/{out_name}_lofi_train.csv", index=False)
         # sifi_train_df.to_csv(f"Data/{out_name}_sifi_train.csv", index=False)
         prior_df.to_csv(f"Data/{out_name}_prior.csv", index=False)
-    fig.savefig(f"Images/{out_name}_distribution.png")
+        fig.savefig(f"Images/{out_name}/{out_name}_distribution.png")
 
     print("Done.")
 

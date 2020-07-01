@@ -33,7 +33,7 @@ slash_break = "\n" + "".join(["/" for i in range(100)]) + "\n"
 def run_sim(args):
 
     # 1) unpack parameters and start timer
-    (algo, sim_num, iterations, agents, truth, sigma_n, prior, hyp, console, plotter, log) = args
+    (out_name, algo, sim_num, iterations, agents, truth, sigma_n, prior, hyp, console, plotter, log) = args
     print(line_break + f"Start Simulation {sim_num} : {algo}" + line_break)
     sim_start = time.time()
 
@@ -54,7 +54,7 @@ def run_sim(args):
             lloyd(algo, sim_num, iterations, agents, positions, truth, sigma_n, prior, hyp, console, plotter, log)
 
     # 4) save ending configuration if plotter is enabled
-    plotter.save(f"Images/{algo}_australia5.png") if plotter else None
+    plotter.save(f"{out_name}.png") if plotter else None
 
     # 5) end time and return data
     sim_end = time.time()
@@ -72,22 +72,21 @@ def run(n_processors=4):
     """
 
     # 1) define simulation hyperparameters
-    name = "Data/australia5"  # name of simulation, used as prefix of all associated input filenames
-    prefix = "Data/australia5"  # name of simulation, used as prefix of all associated output filenames
+    name = "Data/australia6"  # name of simulation, used as prefix of all associated input filenames
+    prefix = "Data/australia6"  # name of simulation, used as prefix of all associated output filenames
 
     agents = 8          # number of agents to use in simulation
-    iterations = 240    # number of iterations to run each simulation
-    simulations = 32     # number of simulations to run
+    iterations = 120    # number of iterations to run each simulation
+    simulations = 1     # number of simulations to run
     sigma_n = 0.1       # sampling noise std. dev. on hifi data (should match distribution's generational parameter)
-    console = False      # boolean indicating if intermediate output should print to console
+    console = True      # boolean indicating if intermediate output should print to console
     log = True          # boolean indicating if output should be logged to CSV for performance analysis
-    # plotter = Plotter([-eps, 1 + eps, -eps, 1 + eps])   # x_min, x_max, y_min, y_max
-    plotter = None      # do not plot
+    plotter = Plotter([-eps, 1 + eps, -eps, 1 + eps])   # x_min, x_max, y_min, y_max
+    # plotter = None      # do not plot
     np.random.seed(1234)  # seed random generator for reproducibility
 
-    algorithms = ["todescato_nsf", "todescato_hsf", "todescato_hmf",
-                  "choi_nsf", "choi_hsf", "choi_hmf",
-                  "lloyd"]
+    algorithms = ["choi_nsf", "choi_hsf", "choi_hmf",
+                  "lloyd"] #["todescato_nsf", "todescato_hsf", "todescato_hmf",
 
     # 2) load distributional data
     truth = pd.read_csv(f"{name}_hifi.csv")  # CSV specifying ground truth (x,y,z=f(x,y)) triples
@@ -118,7 +117,7 @@ def run(n_processors=4):
             prior = human_prior
 
         # 6) configure arguments to pass to simulation
-        args = [(algo, sim_num, iterations, agents, truth, sigma_n, prior, hyp, console, plotter, log)
+        args = [(out_name, algo, sim_num, iterations, agents, truth, sigma_n, prior, hyp, console, plotter, log)
                 for sim_num in range(simulations)]
 
         # 7) pool and map simulations on all processors
@@ -154,7 +153,7 @@ def run(n_processors=4):
 if __name__ == "__main__":
 
     start = time.time()
-    run(n_processors=4)
+    run(n_processors=1)
     end = time.time()
     print(slash_break + slash_break +
           f"runner.py Total Time : {end - start}\n" +

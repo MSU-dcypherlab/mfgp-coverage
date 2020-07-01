@@ -451,28 +451,26 @@ def compute_sample_tsp(clusters):
     return tours
 
 
-def choi_threshold(var_star):
+def choi_threshold(threshold):
     """
-    Given current predictive variance, determine threshold below which uncertainty should be reduced in this period of
+    Given current threshold, determine threshold below which uncertainty should be reduced in this period of
     Choi doubling algorithm.
 
-    :param var_star: [nxn numpy array] of cov(x,x') estimates of posterior variance (diagonal contains variances)
+    :param threshold: [scalar] threshold value from previous step
     :return: [scalar] threshold value below which uncertainty should be reduced on this step
     """
-    var = np.diag(var_star)
-    max_var = np.amax(var)
-    return max_var / 2
+    return threshold / 2
 
 
 def choi_double(period):
     """
     Given current period of Choi doubling algorithm, determine the number of iterations in this period
-    Begin with 16 iterations in first period, and double for all subsequent periods.
+    Begin with 8 iterations in first period, and double for all subsequent periods.
 
     :param period: [scalar] current period of Choi doubling algorithm
     :return: [scalar] number of iterations in this period
     """
-    return 16*2**period
+    return 8*2**period
 
 
 #######################################################################################################################
@@ -816,9 +814,10 @@ def choi(title, sim_num, iterations, agents, positions, truth, sigma_n, prior, h
                              np.amin(x_star[:, 1]), np.amax(x_star[:, 1])])  # [x_min, x_max, y_min, y_max]
     loss = []
 
-    # 3) compute max predictive variance and keep as normalizing constant
+    # 3) compute max predictive variance, keep as normalizing constant, and set as initial threshold
     mu_star, var_star = model.predict(x_star)
     max_var_0 = np.amax(var_star)
+    threshold = max_var_0
     print("Max Initial Predictive Variance: " + str(max_var_0)) if console else None
 
     # 4) initialize model with prior and force-update model
@@ -839,10 +838,8 @@ def choi(title, sim_num, iterations, agents, positions, truth, sigma_n, prior, h
 
     while iteration < iterations:
 
-        # 6) compute prediction and determine threshold below which to reduce uncertainty on this period
-        mu_star, var_star = model.predict(x_star)
-        max_var_t = np.amax(np.diag(var_star))
-        threshold = choi_threshold(var_star)
+        # 6) determine threshold to reduce uncertainty below based on last period's threshold
+        threshold = choi_threshold(threshold)
 
         # 7) determine partition for each robot to explore based on current Lloyd iteration
         sample_vor = voronoi_bounded(centroids_t, bounding_box)

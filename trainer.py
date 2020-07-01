@@ -38,7 +38,6 @@ def train_sfgp(name):
 
     # 4) train model and display results
     model.train()
-    model.hyp[0] = np.mean(y)       # override trained y
     hyp = model.hyp
     ehyp = np.exp(model.hyp)
     for i in range(len(labels)):
@@ -99,7 +98,19 @@ if __name__ == "__main__":
     """
 
     np.random.seed(1234)        # seed for reproducibility
-    name = "australia5"        # name of distribution to infer from
+    name = "australia6"        # name of distribution to infer from
     # train_sfgp(name)
     train_mfgp(name)
 
+"""
+Log likelihood -2039.4505197773688
+mu_lo = 2.846054934161342e-06 // log(mu_lo) = -12.769576756247712
+s^2_lo = 0.11626152480025001 // log(s^2_lo) = -2.151913101361858
+L_lo = 0.8496375662802087 // log(L_lo) = -0.16294541304047286
+mu_hi = 6.133878153416829e-09 // log(mu_hi) = -18.909438635583236
+s^2_hi = 8.78461362322966e-16 // log(s^2_hi) = -34.668359748652385
+L_hi = 198.8214399788468 // log(L_hi) = 5.292407135383497
+rho = 0.4636829985326921 // log(rho) = -0.768554153055917
+noise_lo = 5.029355699362927e-35 // log(noise_lo) = -78.97518637046232
+noise_hi = 0.04396468888285376 // log(noise_hi) = -3.1243684926494555
+"""

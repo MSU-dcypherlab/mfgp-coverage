@@ -56,7 +56,7 @@ class SFGP:
         hyp = np.concatenate([hyp, logsigma_n])
 
         # manually override starting mu value to accelerate convergence
-        hyp[0] = 0.5
+        hyp[0] = -4.0
 
         # manually override starting lengthscale value to accelerate convergence
         hyp[2] = np.log(len)
@@ -86,7 +86,7 @@ class SFGP:
         :return: [scalar] negative log-marginal likelihood of model
         """
         X = self.X
-        mean = self.hyp[0]
+        mean = np.exp(hyp[0])
         y = self.y - mean
 
         N = y.shape[0]
@@ -129,7 +129,7 @@ class SFGP:
             [nxn numpy array] of covariance prediction of points in X_star (diagonal is variance at points in X_star)
         """
         X = self.X
-        mean = self.hyp[0]
+        mean = np.exp(self.hyp[0])
         y = self.y - mean
 
         L = self.L
@@ -312,13 +312,13 @@ class MFGP:
         hyp = np.concatenate((hyp, hyp))
         self.idx_theta_H = np.arange(self.idx_theta_L[-1] + 1, hyp.shape[0])
 
-        rho = np.array([1.0])
-        sigma_n = np.array([0.01, 0.01])
+        rho = np.array([-1.0])
+        sigma_n = np.array([0, 0])
         hyp = np.concatenate((hyp, rho, sigma_n))
 
         # manually override starting mu values to accelerate convergence
-        hyp[0] = 0.2
-        hyp[3] = 0.2
+        hyp[0] = 0
+        hyp[3] = 0
 
         # manually override starting lengthscale values to accelerate convergence
         hyp[2] = np.log(len_L)
@@ -353,8 +353,8 @@ class MFGP:
         sigma_n_H = np.exp(hyp[-1])
         theta_L = hyp[self.idx_theta_L]
         theta_H = hyp[self.idx_theta_H]
-        mean_L = theta_L[0]
-        mean_H = rho * mean_L + theta_H[0]
+        mean_L = np.exp(theta_L[0])
+        mean_H = rho * mean_L + np.exp(theta_H[0])
 
         X_L = self.X_L
         y_L = self.y_L
@@ -412,8 +412,8 @@ class MFGP:
         theta_L = hyp[self.idx_theta_L]
         theta_H = hyp[self.idx_theta_H]
         rho = np.exp(hyp[-3])
-        mean_L = theta_L[0]
-        mean_H = rho * mean_L + theta_H[0]
+        mean_L = np.exp(theta_L[0])
+        mean_H = rho * mean_L + np.exp(theta_H[0])
 
         X_L = self.X_L
         y_L = self.y_L - mean_L
@@ -576,3 +576,5 @@ class MFGP:
         Bounds = ([Bounds[0][0], Bounds[1][0]], [Bounds[0][1], Bounds[1][1]])
         result = differential_evolution(self.get_neg_var, Bounds, args=(Thrd, c, X_L_new, X_H_new), init='random')
         return result.x[None, :], -result.fun
+
+

@@ -72,8 +72,8 @@ def train_mfgp(name):
     y_H = hifi[:, 2].reshape(-1, 1)
 
     # 3) initialize model with approximate lengthscale to accelerate training
-    len_L = 0.1
-    len_H = 0.01
+    len_L = 0.5
+    len_H = 0.1
     model = MFGP(X_L, y_L, X_H, y_H, len_L, len_H)
 
     # 4) train model and display results
@@ -97,7 +97,7 @@ if __name__ == "__main__":
     Run selected hyperparameter inference algorithm
     """
 
-    np.random.seed(1234)        # seed for reproducibility
-    name = "australia6"        # name of distribution to infer from
+    np.random.seed(12)        # seed for reproducibility
+    name = "australia7"        # name of distribution to infer from
     # train_sfgp(name)
     train_mfgp(name)

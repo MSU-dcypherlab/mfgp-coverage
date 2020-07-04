@@ -301,9 +301,9 @@ def australian_wildfires():
 
     :return: None
     """
-    out_name = "australia6"
-    hifi_sigma_n = 0.1     # std. dev. of hifi noise
-    lofi_sigma_n = 0        # std. dev. of lofi noise
+    out_name = "australia7"
+    hifi_sigma_n = 0.5     # std. dev. of hifi noise
+    lofi_sigma_n = 0.05        # std. dev. of lofi noise
 
     # 1) read in raw CSV from Kaggle and filter to single date
     fires = pd.read_csv("Kaggle/AustralianWildfires/fire_archive_M6_96619.csv")

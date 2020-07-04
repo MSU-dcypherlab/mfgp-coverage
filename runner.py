@@ -13,7 +13,7 @@ import time
 import random
 import cProfile
 from multiprocessing import Pool
-from simulator import todescato, choi, lloyd
+from simulator import todescato, choi, lloyd, periodic
 from plotter import Plotter
 
 import numpy as np
@@ -49,9 +49,14 @@ def run_sim(args):
     elif "todescato" in algo:
         loss_log_t, agent_log_t, sample_log_t = \
             todescato(algo, sim_num, iterations, agents, positions, truth, sigma_n, prior, hyp, console, plotter, log)
-    else:
+    elif "lloyd" in algo:
         loss_log_t, agent_log_t, sample_log_t = \
             lloyd(algo, sim_num, iterations, agents, positions, truth, sigma_n, prior, hyp, console, plotter, log)
+    elif "periodic" in algo:
+        loss_log_t, agent_log_t, sample_log_t = \
+            periodic(algo, sim_num, iterations, agents, positions, truth, sigma_n, prior, hyp, console, plotter, log)
+    else:
+        raise ValueError("Invalid simulation algorithm specified.")
 
     # 4) save ending configuration if plotter is enabled
     plotter.save(f"{out_name}.png") if plotter else None
@@ -72,21 +77,23 @@ def run(n_processors=4):
     """
 
     # 1) define simulation hyperparameters
-    name = "Data/australia6"  # name of simulation, used as prefix of all associated input filenames
-    prefix = "Data/australia6"  # name of simulation, used as prefix of all associated output filenames
+    name = "Data/australia7"  # name of simulation, used as prefix of all associated input filenames
+    prefix = "Data/australia7"  # name of simulation, used as prefix of all associated output filenames
 
     agents = 8          # number of agents to use in simulation
     iterations = 120    # number of iterations to run each simulation
-    simulations = 1     # number of simulations to run
-    sigma_n = 0.1       # sampling noise std. dev. on hifi data (should match distribution's generational parameter)
-    console = True      # boolean indicating if intermediate output should print to console
+    simulations = 100     # number of simulations to run
+    sigma_n = 0.5       # sampling noise std. dev. on hifi data (should match distribution's generational parameter)
+    console = False      # boolean indicating if intermediate output should print to console
     log = True          # boolean indicating if output should be logged to CSV for performance analysis
-    plotter = Plotter([-eps, 1 + eps, -eps, 1 + eps])   # x_min, x_max, y_min, y_max
-    # plotter = None      # do not plot
+    # plotter = Plotter([-eps, 1 + eps, -eps, 1 + eps])   # x_min, x_max, y_min, y_max
+    plotter = None      # do not plot
     np.random.seed(1234)  # seed random generator for reproducibility
 
-    algorithms = ["choi_nsf", "choi_hsf", "choi_hmf",
-                  "lloyd"] #["todescato_nsf", "todescato_hsf", "todescato_hmf",
+    algorithms = ["todescato_nsf", "todescato_hsf", "todescato_hmf",
+                  "choi_nsf", "choi_hsf", "choi_hmf",
+                  "periodic_nsf", "periodic_hsf", "periodic_hmf",
+                  "lloyd"]
 
     # 2) load distributional data
     truth = pd.read_csv(f"{name}_hifi.csv")  # CSV specifying ground truth (x,y,z=f(x,y)) triples
@@ -138,11 +145,11 @@ def run(n_processors=4):
         # 9) save dataframes from simulation results for post-analysis
         if log:
             loss_df = pd.DataFrame(loss_log)
-            loss_df.to_csv(out_name + "_loss.csv")
+            loss_df.to_csv(f"{out_name}_loss.csv")
             agent_df = pd.DataFrame(agent_log)
-            agent_df.to_csv(out_name + "_agent.csv")
+            agent_df.to_csv(f"{out_name}_agent.csv")
             sample_df = pd.DataFrame(sample_log)
-            sample_df.to_csv(out_name + "_sample.csv")
+            sample_df.to_csv(f"{out_name}_sample.csv")
 
         algo_end = time.time()
         print(slash_break + f"End Algorithm : {algo}\n"
@@ -153,7 +160,7 @@ def run(n_processors=4):
 if __name__ == "__main__":
 
     start = time.time()
-    run(n_processors=1)
+    run(n_processors=4)
     end = time.time()
     print(slash_break + slash_break +
           f"runner.py Total Time : {end - start}\n" +

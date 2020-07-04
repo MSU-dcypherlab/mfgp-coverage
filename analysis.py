@@ -13,9 +13,21 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-light_rgb = [(1, 0, 0), (0, 1, 0), (0, 0, 1)]
-dark_rgb = [(0.5, 0, 0), (0, 0.5, 0), (0, 0, 0.5)]
-colors = light_rgb + dark_rgb + [(1, 0, 1)]
+
+
+todescato_colors = [(0, 85, 85),        # dark teal
+                    (0, 170, 170),      # mid teal
+                    (0, 255, 255)]      # bright teal
+choi_colors = [(85, 0, 85),             # dark purple
+               (170, 0, 170),           # mid purple
+               (255, 0, 255)]           # bright purple
+periodic_colors = [(85, 85, 0),         # dark yellow
+                   (170, 170, 0),       # mid yellow
+                   (255, 255, 0)]       # bright yellow
+lloyd_color = [(128, 128, 128)]         # grey
+
+base_colors = todescato_colors + choi_colors + periodic_colors + lloyd_color    # define colors in (0, 255)
+colors = [tuple(map(lambda val: val/255, color)) for color in base_colors]      # normalize colors in (0, 1)
 
 
 def compute_dist(agents):
@@ -77,7 +89,7 @@ def plot_loss(losses, name=None):
                         y2=mean_loss_df.iloc[:, i] + 2*std_loss_df.iloc[:, i] / sqrt(num_simulations),
                         color=colors[i], alpha=0.2)
     plt.title("Loss by Iteration")
-    plt.ylim((0.005, 0.01))
+    # plt.ylim((0.005, 0.01))
     plt.savefig(f"Images/{name}/{name}_loss.png") if name is not None else None
     plt.show()
 
@@ -308,7 +320,7 @@ def plot_dist(agents, name=None):
     plt.show()
 
 
-def plot_samples(samples, name=None):
+def plot_samples(agents, name=None):
     """
 
     :param samples:
@@ -320,16 +332,22 @@ def plot_samples(samples, name=None):
     total_sample_df = None
     std_total_sample_df = None
 
-    for title, df in samples.items():
+    for title, df in agents.items():
 
-        # add column of ones to df to count number of records
-        df["Count"] = 1
         num_simulations = df["SimNum"].max() + 1    # starts counting at 0
 
+        # map explore T/F column to 0/1
+        df["Explore"] = df["Explore"].apply(lambda x: int(eval(x)))
+
         # compute mean number of samples by iteration
-        sum_samples = df.groupby(by=["SimNum", "Iteration"]).sum()
-        mean_samples = pd.DataFrame(sum_samples["Count"].groupby("Iteration").mean())
-        std_samples = pd.DataFrame(sum_samples["Count"].groupby("Iteration").std())
+        mean_samples = df.groupby("Iteration").mean()
+        mean_samples = pd.DataFrame(mean_samples["Explore"])
+
+        # compute std samples by iteration
+        std_samples = df.groupby("Iteration").std()
+        std_samples = pd.DataFrame(std_samples["Explore"])
+
+        # relabel
         mean_samples.columns = [title]
         std_samples.columns = [title]
 
@@ -377,9 +395,9 @@ def plot_samples(samples, name=None):
 if __name__ == "__main__":
 
     # define simulation names to be analyzed
-    sim_name = "australia5"
+    sim_name = "australia7"
     prefix = f"Data/{sim_name}"
-    algorithms = ["todescato", "choi"]
+    algorithms = ["todescato", "choi", "periodic"]
     fidelities = ["nsf", "hsf", "hmf"]
     names = [f"{prefix}_{a}_{f}" for a in algorithms for f in fidelities]
     names.append(f"{prefix}_lloyd")
@@ -414,12 +432,12 @@ if __name__ == "__main__":
         samples[title] = sample_df
 
     # compute dists in place
-    compute_dist(agents)
+    # compute_dist(agents)
 
     # plot analysis
-    plot_loss(losses, sim_name)
-    plot_regret(losses, sim_name)
-    plot_var(agents, sim_name)
+    # plot_loss(losses, sim_name)
+    # plot_regret(losses, sim_name)
+    # plot_var(agents, sim_name)
     # plot_explore(agents, sim_name)
-    plot_dist(agents, sim_name)
-    plot_samples(samples, sim_name)
+    # plot_dist(agents, sim_name)
+    plot_samples(agents, sim_name)

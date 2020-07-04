@@ -462,7 +462,7 @@ def choi_threshold(threshold):
     :param threshold: [scalar] threshold value from previous step
     :return: [scalar] threshold value below which uncertainty should be reduced on this step
     """
-    return threshold / 2
+    return threshold / np.sqrt(2)
 
 
 def choi_double(period):
@@ -474,6 +474,17 @@ def choi_double(period):
     :return: [scalar] number of iterations in this period
     """
     return 8*2**period
+
+
+def periodic_decision(iteration):
+    """
+    Given the index of an iteration, decide whether all agents should explore or exploit in a coordinated,
+    periodic fashion (as presented as baseline in Todescato et. al.)
+
+    :param iteration: [int] the current iteration number
+    :return: [boolean] True if agents should explore on this iteration, False if they should exploit
+    """
+    return (iteration // 5) % 2 == 0
 
 
 #######################################################################################################################
@@ -591,11 +602,179 @@ def lloyd(title, sim_num, iterations, agents, positions, truth, sigma_n, prior, 
     # note that since we assume perfect knowledge in this algorithm, sample_log is filled with NAs
     return loss_log, agent_log, sample_log
 
+def periodic(title, sim_num, iterations, agents, positions, truth, sigma_n, prior, hyp, console, plotter, log):
+    """
+    Implement periodic switching algorithm of Todescato et. al. "Multi-robots Gaussian estimation and coverage..."
+    Support single-fidelity and multi-fidelity models; model choice depends on hyperparameters passed in.
+
+    :param sim_num: [int] index number of current simulation (relevant when running multiple simulations)
+    :param iterations: [int] number of iterations to run simulation
+    :param agents: [int] number of agents being simulated
+    :param positions: [nAgentsx2 numpy array] of initial (x,y) points of agents
+    :param truth: [nx3 pandas DF] triples of (x,y,z=f(x,y)) where z=f is the ground truth function at each point
+    :param sigma_n: [float] std. dev. of sample noise such that sample noise is iid N(0, sigma_n**2)
+    :param prior: [mx3 pandas DF] triples of (x,y,z~f(x,y)) where z~f is a low-fidelity prior estimate of the ground
+                  truth function at each point, and m << n such that the prior estimate is given only at a few points
+    :param hyp: [1x9 pandas DF] of log-scaled hyperparameters to use in MFGP model if multi-fidelity simulation
+                log-scaled hyp take the form [mu_lo, s^2_lo, L_lo, mu_hi, s^2_hi, L_hi, rho, noise_lo, noise_hi]
+                OR
+                [1x4 pandas DF] of log-scaled hyperparameters to use in SFGP model if single-fidelity simulation
+                log-scaled hyp take the form [mu, s^2, l, noise]
+    :param console: boolean indicating whether to display simulation progress on console
+    :param plotter: boolean indicating whether to plot simulation progress using plotter.py
+    :param log: boolean indicating whether to log simulation progress into CSV for performance analysis
+    :return: [3 value tuple] of
+        [list of dictionaries] log of loss by iteration
+        [list of dictionaries] log of agent positions and actions by iteration
+        [list of dictionaries] log of samples taken by agent over the course of simulation
+    """
+    # 0) initialize logging lists, plotter, and determine fidelity
+    loss_log, agent_log, sample_log = [], [], [] if log else None
+    plotter.reset() if plotter else None
+    if len(hyp.columns) == 4:
+        fidelity = "S"  # use singlefidelity model
+    elif len(hyp.columns) == 9:
+        fidelity = "M"  # use multifidelity model
+    else:
+        raise TypeError("Hyperparameters must be of length 4 (single-fidelity) or 9 (multi-fidelity)")
+
+    print(line_break + title + line_break)
+
+    # 1) initialize model with hyperparameters and empty prior
+    if fidelity == "S":
+        model = init_SFGP(hyp, prior=None)
+    else:
+        model = init_MFGP(hyp, prior=None)
+
+    # 2) initialize arrays of x_star test points, y truth points, loss and bounding box of domain
+    truth_arr = np.vstack(truth.values.tolist())
+    x_star = truth_arr[:, [0, 1]]  # all rows, first two columns are X* gridded test points
+    y = truth_arr[:, [2]]  # all rows, third column is ground truth y points
+    bounding_box = np.array([np.amin(x_star[:, 0]), np.amax(x_star[:, 0]),
+                             np.amin(x_star[:, 1]), np.amax(x_star[:, 1])])  # [x_min, x_max, y_min, y_max]
+    loss = []
+
+    # 3) compute max predictive variance (for logging purposes only)
+    mu_star, var_star = model.predict(x_star)
+    max_var_0 = np.amax(var_star)
+    print("Max Initial Predictive Variance: " + str(max_var_0)) if console else None
+
+    # 4) initialize model with prior and force-update model
+    if fidelity == "S":
+        model = init_SFGP(hyp, prior=prior)
+        model.updt_info(model.X, model.y)
+    else:
+        model = init_MFGP(hyp, prior=prior)
+        model.updt_info(model.X_L, model.y_L, model.X_H, model.y_H)
+
+    # 5) compute prediction given prior and initialize relevant explore/exploit decision variables
+    mu_star, var_star = model.predict(x_star)
+    var = np.diag(var_star)
+    max_var_t = np.amax(var) * np.ones((agents, 1))
+    prob_explore_t = np.zeros((agents, 1))
+    explore_t = np.zeros((agents, 1))   # initialize to zero so agents do not sample on first iteration
+    prev_positions = np.copy(positions)     # store previous iteration positions to compute distance
+    centroids_t = np.copy(positions)     # initialize centroids governing Lloyd iterations to current positions
+    period = 0                  # current explore/exploit period
+
+    # 6) begin iterative portion of algorithm
+    for iteration in range(iterations):
+
+        print(f"\nBegin Iteration {iteration} of Simulation {sim_num} of {title}") if console else None
+
+        # 7) record samples from each agent on explore step (Todescato "Listen") and log distance
+        x_new = np.empty([0, 2])    # store new sample points
+        y_new = np.empty([0, 1])    # store new samples
+        id_new = np.empty([0, 1])   # store agent ids that sampled
+        for i in range(agents):
+            if explore_t[i] == 1:  # this robot is on an explore step: take sample
+                x_sample = positions[i, :]
+                sample_idx = np.logical_and(truth_arr[:, 0] == x_sample[0], truth_arr[:, 1] == x_sample[1])
+                y_sample = truth_arr[sample_idx, 2] + \
+                           np.random.default_rng().normal(loc=0, scale=sigma_n)  # f + noise
+                print(f"Robot {i} explored {x_sample} and sampled {y_sample}") if console else None
+                x_new = np.vstack((x_new, x_sample))
+                y_new = np.vstack((y_new, y_sample))
+                id_new = np.vstack((id_new, i))
+            elif iteration > 0:     # 0th iteration is for initialization purposes only
+                print(f"Robot {i} exploited to {centroids_t[i, :]}") if console else None
+
+        distance = np.sqrt(np.sum((positions - prev_positions) ** 2, axis=1)).reshape(-1, 1)
+
+        # 8) update GP model and estimates after taking samples
+        if fidelity == "S":
+            model.updt(x_new, y_new)
+        else:
+            model.updt_hifi(x_new, y_new)
+        mu_star, var_star = model.predict(x_star)
+
+        # 9) compute loss given current positions
+        loss_vor = voronoi_bounded(positions, bounding_box)
+        loss_t = compute_loss(loss_vor, truth_arr)
+        loss.append(loss_t)
+
+        # 10) update partitions and centroids given current estimate
+        lloyd_vor = voronoi_bounded(centroids_t, bounding_box)
+        centroids_t = compute_centroids(lloyd_vor, x_star, mu_star)
+
+        # 11) compute points of max variance (for logging purposes only)
+        argmax_var_t, max_var_t = compute_max_var(lloyd_vor, truth_arr, var_star)
+
+        # 12) print to console, update log, and plot for this iteration
+        # (note: period is logged in all simulations for consistency, and DOES apply here)
+        if console:
+            print(f"Period {period}")
+            print(f"Fidelity {fidelity}")
+            print(f"Current loss: {loss_t}")
+            print(f"Max var by cell: {max_var_t.flatten()}")
+            print(f"Normalizing max var: {max_var_0}")
+            print(f"Probability of exploration: {prob_explore_t.flatten()}")
+            print(f"Decision of exploration: {explore_t.flatten()}")
+            print(f"End Iteration {iteration}")
+        if log:
+            loss_log.append({"SimNum": sim_num, "Iteration": iteration, "Period": period,
+                             "Fidelity": fidelity, "Loss": loss_t})
+            for i in range(agents):
+                agent_log.append({"SimNum": sim_num, "Iteration": iteration, "Period": period,
+                                  "Fidelity": fidelity, "Agent": i,
+                                  "X": positions[i, 0], "Y": positions[i, 1],
+                                  "XMax": argmax_var_t[i, 0], "YMax": positions[i, 1],
+                                  "VarMax": max_var_t[i, 0], "Var0": max_var_0,
+                                  "XCentroid": centroids_t[i, 0], "YCentroid": centroids_t[i, 1],
+                                  "ProbExplore": prob_explore_t[i, 0], "Explore": explore_t[i, 0],
+                                  "Distance": distance[i, 0]})
+            for i in range(id_new.size):
+                sample_log.append({"SimNum": sim_num, "Iteration": iteration, "Period": period, "Fidelity": fidelity,
+                                   "Agent": id_new[i, 0], "X": x_new[i, 0], "Y": x_new[i, 1], "Sample": y_new[i, 0]})
+        if plotter:
+            plotter.plot_explore(prob_explore_t, explore_t)
+            plotter.plot_mean(x_star, mu_star)
+            plotter.plot_var(x_star, var_star)
+            plotter.plot_loss_vor(loss_vor, truth_arr, explore_t)
+            plotter.plot_loss(loss)
+            plotter.plot_lloyd_vor(lloyd_vor, centroids_t, truth_arr)
+            plotter.show()
+
+        # 13) make next iteration's explore/exploit decision in periodic fashion
+        explore_bool = periodic_decision(iteration)
+        prob_explore_t = np.array([int(explore_bool) for agent in range(agents)]).reshape(-1, 1)  # for logging
+        explore_t = np.array([int(explore_bool) for agent in range(agents)]).reshape(-1, 1)  # all agents take same action
+
+        # 14) update agent positions (Todescato "Target-Points transmission")
+        prev_positions = np.copy(positions)
+        for i in range(agents):
+            if explore_t[i, 0]:
+                positions[i, :] = argmax_var_t[i, :]
+            else:
+                positions[i, :] = centroids_t[i, :]
+
+    # 15) return log dictionary lists to driver function, which will save them into a dataframe
+    return loss_log, agent_log, sample_log
+
 
 def todescato(title, sim_num, iterations, agents, positions, truth, sigma_n, prior, hyp, console, plotter, log):
     """
-    Implement Algorithm 1 of Todescato et. al. "Multi-robots Gaussian estimation and coverage..." using a
-    single-fidelity GP model.
+    Implement Algorithm 1 of Todescato et. al. "Multi-robots Gaussian estimation and coverage..."
     Support single-fidelity and multi-fidelity models; model choice depends on hyperparameters passed in.
 
     :param sim_num: [scalar] index number of current simulation (relevant when running multiple simulations)
@@ -748,7 +927,7 @@ def todescato(title, sim_num, iterations, agents, positions, truth, sigma_n, pri
 
         # 13) based on max variance, make next iteration's explore/exploit decision
         prob_explore_t = max_var_t / max_var_0
-        explore_t = np.array([random.random() < cutoff for cutoff in prob_explore_t])  # Bernoulli wrt prob_explore_t
+        explore_t = np.array([int(random.random() < cutoff) for cutoff in prob_explore_t])  # Bernoulli wrt prob_explore_t
 
         # 14) update agent positions (Todescato "Target-Points transmission")
         prev_positions = np.copy(positions)
@@ -945,10 +1124,10 @@ def choi(title, sim_num, iterations, agents, positions, truth, sigma_n, prior, h
             for i in range(agents):
                 if tsp_tours_t[i].shape[0] > 0:  # this agent still has points to sample from in TSP tour
                     prob_explore_t[i] = 1
-                    explore_t[i] = True
+                    explore_t[i] = 1
                 else:  # this agent is done sampling all points in this period's TSP tour
                     prob_explore_t[i] = 0
-                    explore_t[i] = False
+                    explore_t[i] = 0
 
             # 14) update agent positions and delete points from TSP tour as we go (all points remain in tsp_tour_0)
             prev_positions = np.copy(positions)

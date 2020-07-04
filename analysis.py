@@ -15,16 +15,16 @@ import matplotlib.pyplot as plt
 
 
 
-todescato_colors = [(0, 85, 85),        # dark teal
-                    (0, 170, 170),      # mid teal
+todescato_colors = [(0, 120, 120),        # dark teal
+                    (0, 180, 180),      # mid teal
                     (0, 255, 255)]      # bright teal
-choi_colors = [(85, 0, 85),             # dark purple
-               (170, 0, 170),           # mid purple
+choi_colors = [(120, 0, 120),             # dark purple
+               (180, 0, 180),           # mid purple
                (255, 0, 255)]           # bright purple
-periodic_colors = [(85, 85, 0),         # dark yellow
-                   (170, 170, 0),       # mid yellow
+periodic_colors = [(120, 120, 0),         # dark yellow
+                   (180, 180, 0),       # mid yellow
                    (255, 255, 0)]       # bright yellow
-lloyd_color = [(128, 128, 128)]         # grey
+lloyd_color = [(180, 180, 180)]         # grey
 
 base_colors = todescato_colors + choi_colors + periodic_colors + lloyd_color    # define colors in (0, 255)
 colors = [tuple(map(lambda val: val/255, color)) for color in base_colors]      # normalize colors in (0, 1)
@@ -89,26 +89,33 @@ def plot_loss(losses, name=None):
                         y2=mean_loss_df.iloc[:, i] + 2*std_loss_df.iloc[:, i] / sqrt(num_simulations),
                         color=colors[i], alpha=0.2)
     plt.title("Loss by Iteration")
-    # plt.ylim((0.005, 0.01))
     plt.savefig(f"Images/{name}/{name}_loss.png") if name is not None else None
     plt.show()
 
-    # plot closeup of simulation loss at start
-    trunc = mean_loss_df[mean_loss_df.index <= 50]
+    # plot closeup of simulation loss with periodic dropped out
+    mean_loss_df = mean_loss_df.drop(columns=["periodic_nsf", "periodic_hsf", "periodic_hmf"])
+    std_loss_df = std_loss_df.drop(columns=["periodic_nsf", "periodic_hsf", "periodic_hmf"])
     plt.figure()
-    trunc.plot(color=colors)
+    ax = mean_loss_df.plot(color=colors)
+    for i in range(len(mean_loss_df.columns)):
+        ax.fill_between(x=mean_loss_df.index,
+                        y1=mean_loss_df.iloc[:, i] - 2 * std_loss_df.iloc[:, i] / sqrt(num_simulations),
+                        y2=mean_loss_df.iloc[:, i] + 2 * std_loss_df.iloc[:, i] / sqrt(num_simulations),
+                        color=colors[i], alpha=0.2)
     plt.title("Loss by Iteration: Zoomed")
+    plt.ylim((0.005, 0.012))
     plt.savefig(f"Images/{name}/{name}_loss_zoomed.png") if name is not None else None
     plt.show()
 
+
     # compute rolling loss and plot
-    window_size = 10
-    rolling_mean_loss_df = mean_loss_df.rolling(window_size, min_periods=1, center=True).mean()
-    plt.figure()
-    rolling_mean_loss_df.plot(color=colors)
-    plt.title("Moving Average Loss by Iteration (n=10)")
-    plt.savefig(f"Images/{name}/{name}_loss_rolling.png") if name is not None else None
-    plt.show()
+    # window_size = 10
+    # rolling_mean_loss_df = mean_loss_df.rolling(window_size, min_periods=1, center=True).mean()
+    # plt.figure()
+    # rolling_mean_loss_df.plot(color=colors)
+    # plt.title("Moving Average Loss by Iteration (n=10)")
+    # plt.savefig(f"Images/{name}/{name}_loss_rolling.png") if name is not None else None
+    # plt.show()
 
 
 def plot_regret(losses, name=None):
@@ -167,6 +174,21 @@ def plot_regret(losses, name=None):
                         color=colors[i], alpha=0.2)
     plt.title("Regret by Iteration")
     plt.savefig(f"Images/{name}/{name}_regret.png") if name is not None else None
+    plt.show()
+
+    # drop periodic and zoom in
+    regret_df = regret_df.drop(columns=["periodic_nsf", "periodic_hsf", "periodic_hmf"])
+    std_regret_df = std_regret_df.drop(columns=["periodic_nsf", "periodic_hsf", "periodic_hmf"])
+    plt.figure()
+    ax = regret_df.plot(color=colors)
+    for i in range(len(regret_df.columns)):
+        ax.fill_between(x=regret_df.index,
+                        y1=regret_df.iloc[:, i] - 2 * std_regret_df.iloc[:, i] / sqrt(num_simulations),
+                        y2=regret_df.iloc[:, i] + 2 * std_regret_df.iloc[:, i] / sqrt(num_simulations),
+                        color=colors[i], alpha=0.2)
+    plt.title("Regret by Iteration: Zoomed")
+    plt.ylim((0, 0.5))
+    plt.savefig(f"Images/{name}/{name}_regret_zoomed.png") if name is not None else None
     plt.show()
 
 
@@ -436,8 +458,8 @@ if __name__ == "__main__":
 
     # plot analysis
     # plot_loss(losses, sim_name)
-    # plot_regret(losses, sim_name)
+    plot_regret(losses, sim_name)
     # plot_var(agents, sim_name)
     # plot_explore(agents, sim_name)
     # plot_dist(agents, sim_name)
-    plot_samples(agents, sim_name)
+    # plot_samples(agents, sim_name)

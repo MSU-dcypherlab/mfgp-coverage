@@ -33,7 +33,7 @@ def train_sfgp(name):
     y = sifi[:, [2]].reshape(-1, 1)     # column 2 is f(x,y)
 
     # 3) initialize model with approximate lengthscale to accelerate training
-    len_sf = 0.1
+    len_sf = 0.01
     model = SFGP(X, y, len_sf)
 
     # 4) train model and display results
@@ -97,7 +97,7 @@ if __name__ == "__main__":
     Run selected hyperparameter inference algorithm
     """
 
-    np.random.seed(12)        # seed for reproducibility
-    name = "australia7"        # name of distribution to infer from
-    # train_sfgp(name)
+    np.random.seed(1234)        # seed for reproducibility
+    name = "australia9"         # name of distribution to infer from
+    train_sfgp(name)
     train_mfgp(name)

@@ -93,8 +93,8 @@ def plot_loss(losses, name=None):
     plt.show()
 
     # plot closeup of simulation loss with periodic dropped out
-    mean_loss_df = mean_loss_df.drop(columns=["periodic_nsf", "periodic_hsf", "periodic_hmf"])
-    std_loss_df = std_loss_df.drop(columns=["periodic_nsf", "periodic_hsf", "periodic_hmf"])
+    # mean_loss_df = mean_loss_df.drop(columns=["periodic_nsf", "periodic_hsf", "periodic_hmf"])
+    # std_loss_df = std_loss_df.drop(columns=["periodic_nsf", "periodic_hsf", "periodic_hmf"])
     plt.figure()
     ax = mean_loss_df.plot(color=colors)
     for i in range(len(mean_loss_df.columns)):
@@ -103,7 +103,7 @@ def plot_loss(losses, name=None):
                         y2=mean_loss_df.iloc[:, i] + 2 * std_loss_df.iloc[:, i] / sqrt(num_simulations),
                         color=colors[i], alpha=0.2)
     plt.title("Loss by Iteration: Zoomed")
-    plt.ylim((0.005, 0.012))
+    plt.ylim((0.001, 0.006))
     plt.savefig(f"Images/{name}/{name}_loss_zoomed.png") if name is not None else None
     plt.show()
 
@@ -130,9 +130,9 @@ def plot_regret(losses, name=None):
     regret_df = None
     std_regret_df = None
 
-    min_loss = losses["lloyd"]["Loss"].min()
-    # min_loss = [df["Loss"].min() for df in losses.values()]
-    # min_loss = min(min_loss)
+    # min_loss = losses["lloyd"]["Loss"].min()
+    min_loss = [df["Loss"].min() for df in losses.values()]
+    min_loss = min(min_loss)
     for title, df in losses.items():
 
         num_simulations = df["SimNum"].max() + 1    # starts counting at 0
@@ -177,8 +177,8 @@ def plot_regret(losses, name=None):
     plt.show()
 
     # drop periodic and zoom in
-    regret_df = regret_df.drop(columns=["periodic_nsf", "periodic_hsf", "periodic_hmf"])
-    std_regret_df = std_regret_df.drop(columns=["periodic_nsf", "periodic_hsf", "periodic_hmf"])
+    # regret_df = regret_df.drop(columns=["periodic_nsf", "periodic_hsf", "periodic_hmf"])
+    # std_regret_df = std_regret_df.drop(columns=["periodic_nsf", "periodic_hsf", "periodic_hmf"])
     plt.figure()
     ax = regret_df.plot(color=colors)
     for i in range(len(regret_df.columns)):
@@ -187,7 +187,7 @@ def plot_regret(losses, name=None):
                         y2=regret_df.iloc[:, i] + 2 * std_regret_df.iloc[:, i] / sqrt(num_simulations),
                         color=colors[i], alpha=0.2)
     plt.title("Regret by Iteration: Zoomed")
-    plt.ylim((0, 0.5))
+    plt.ylim((0, 0.2))
     plt.savefig(f"Images/{name}/{name}_regret_zoomed.png") if name is not None else None
     plt.show()
 
@@ -417,14 +417,14 @@ def plot_samples(agents, name=None):
 if __name__ == "__main__":
 
     # define simulation names to be analyzed
-    sim_name = "australia7"
+    sim_name = "australia9.1"
     prefix = f"Data/{sim_name}"
-    algorithms = ["todescato", "choi", "periodic"]
-    fidelities = ["nsf", "hsf", "hmf"]
+    algorithms = ["todescato", "choi"]
+    fidelities = ["nsf", "hsf"]
     names = [f"{prefix}_{a}_{f}" for a in algorithms for f in fidelities]
-    names.append(f"{prefix}_lloyd")
+    # names.append(f"{prefix}_lloyd")
     titles = [f"{a}_{f}" for a in algorithms for f in fidelities]
-    titles.append("lloyd")
+    # titles.append("lloyd")
 
     # define dtypes to be loaded
     loss_dtypes = {"SimNum": int, "Iteration": int, "Period": int,
@@ -457,9 +457,9 @@ if __name__ == "__main__":
     # compute_dist(agents)
 
     # plot analysis
-    # plot_loss(losses, sim_name)
+    plot_loss(losses, sim_name)
     plot_regret(losses, sim_name)
-    # plot_var(agents, sim_name)
-    # plot_explore(agents, sim_name)
-    # plot_dist(agents, sim_name)
-    # plot_samples(agents, sim_name)
+    plot_var(agents, sim_name)
+    plot_explore(agents, sim_name)
+    plot_dist(agents, sim_name)
+    plot_samples(agents, sim_name)

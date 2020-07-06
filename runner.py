@@ -77,22 +77,26 @@ def run(n_processors=4):
     """
 
     # 1) define simulation hyperparameters
-    name = "Data/australia7"  # name of simulation, used as prefix of all associated input filenames
-    prefix = "Data/australia7"  # name of simulation, used as prefix of all associated output filenames
+    name = "Data/australia9"  # name of simulation, used as prefix of all associated input filenames
+    prefix = "Data/australia9.1"  # name of simulation, used as prefix of all associated output filenames
 
     agents = 8          # number of agents to use in simulation
     iterations = 120    # number of iterations to run each simulation
     simulations = 100     # number of simulations to run
-    sigma_n = 0.5       # sampling noise std. dev. on hifi data (should match distribution's generational parameter)
+    sigma_n = 0.1       # sampling noise std. dev. on hifi data (should match distribution's generational parameter)
     console = False      # boolean indicating if intermediate output should print to console
     log = True          # boolean indicating if output should be logged to CSV for performance analysis
     # plotter = Plotter([-eps, 1 + eps, -eps, 1 + eps])   # x_min, x_max, y_min, y_max
     plotter = None      # do not plot
     np.random.seed(1234)  # seed random generator for reproducibility
 
-    algorithms = ["todescato_nsf", "todescato_hsf", "todescato_hmf",
-                  "choi_nsf", "choi_hsf", "choi_hmf",
-                  "periodic_nsf", "periodic_hsf", "periodic_hmf",
+    algorithms = ["todescato_nsf",
+                  "choi_nsf",
+                  "todescato_hsf",
+                  "choi_hsf",
+                  "todescato_hmf",
+                  "choi_hmf",
+                  # "periodic_nsf", "periodic_hsf", "periodic_hmf",
                   "lloyd"]
 
     # 2) load distributional data

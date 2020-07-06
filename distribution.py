@@ -37,7 +37,7 @@ def normalize(y, use_epsilon=True):
     return y
 
 
-def exponential(x_star, lenscale, positive_centers, negative_centers):
+def exponential(x_star, lenscale, positive_centers=None, negative_centers=None):
     """
     Generate a 3-dimensional (x, y, z=f(x,y)) distribution by summing exponential bump functions parameterized by
     lenscale to positive_centers and subtracting from negative_centers. Evaluate this function at all points in x_star.
@@ -55,13 +55,13 @@ def exponential(x_star, lenscale, positive_centers, negative_centers):
     """
     y = np.zeros(x_star.shape[0])
 
-    if positive_centers:
+    if positive_centers is not None:
         positive_centers = np.array(positive_centers)
         for center in positive_centers:
             distances = np.sum((x_star[:, [0, 1]] - center)**2, axis=1)  # dist_from_center = dx^2 + dy^2 for each row
             kernel = np.exp(-distances / lenscale)
             y += kernel
-    if negative_centers:
+    if negative_centers is not None:
         negative_centers = np.array(negative_centers)
         for center in negative_centers:
             distances = np.sum((x_star[:, [0, 1]] - center)**2, axis=1)  # dist_from_center = dx^2 + dy^2 for each row
@@ -301,17 +301,17 @@ def australian_wildfires():
 
     :return: None
     """
-    out_name = "australia7"
-    hifi_sigma_n = 0.5     # std. dev. of hifi noise
-    lofi_sigma_n = 0.05        # std. dev. of lofi noise
+    out_name = "australia9"
+    hifi_sigma_n = 0.1     # std. dev. of hifi noise
+    lofi_sigma_n = 0.01        # std. dev. of lofi noise
 
     # 1) read in raw CSV from Kaggle and filter to single date
     fires = pd.read_csv("Kaggle/AustralianWildfires/fire_archive_M6_96619.csv")
     date = "2019-08-01"
     fires = fires[fires.acq_date == date]
-    plt.scatter(fires.longitude, fires.latitude)
-    plt.title(f"Filtered by Date: {date}")
-    plt.show()
+    # plt.scatter(fires.longitude, fires.latitude)
+    # plt.title(f"Filtered by Date: {date}")
+    # plt.show()
 
     # 2) select only data from within boxed latitude
     fires = fires[(fires.latitude > -35) & (fires.latitude < -29) &
@@ -319,9 +319,9 @@ def australian_wildfires():
 
     # 3) take X points to be (x1 = longitude, x2 = latitude) and normalize into unit square
     data = np.array([fires.longitude, fires.latitude]).T
-    plt.scatter(data[:, 0], data[:, 1])
-    plt.title(f"Filtered by Date: {date} and Lat/Lon")
-    plt.show()
+    # plt.scatter(data[:, 0], data[:, 1])
+    # plt.title(f"Filtered by Date: {date} and Lat/Lon")
+    # plt.show()
 
     data[:, 0] = normalize(data[:, 0], use_epsilon=False)
     data[:, 1] = normalize(data[:, 1], use_epsilon=False)
@@ -339,8 +339,13 @@ def australian_wildfires():
     x_star = np.array([[i, j] for i in grid for j in grid])
 
 
-    y_H = hifi_kde(x_star.T)        # scipy takes rows as dimensions here
-    y_L = lofi_kde(x_star.T)        # scipy takes rows as dimensions here
+    # y_H = hifi_kde(x_star.T)        # scipy takes rows as dimensions here
+    # TRY NEW IDEA: use KDE for lofi and mixture model with Gaussians for hifi
+    len_H = 0.01
+    len_L = 0.25
+    y_H = exponential(x_star, positive_centers=data, lenscale=len_H)
+    # y_L = lofi_kde(x_star.T)        # scipy takes rows as dimensions here
+    y_L = exponential(x_star, positive_centers=data, lenscale=len_L)
 
     y_H = normalize(y_H)
     y_L = normalize(y_L)
@@ -356,13 +361,13 @@ def australian_wildfires():
     idx = np.random.randint(0, x_star.shape[0], size=sample_size)
     hifi_train = hifi[idx, :]
     hifi_train[:, 2] += np.random.default_rng().normal(loc=0, scale=hifi_sigma_n, size=sample_size)
-    idx = np.random.randint(0, x_star.shape[0], size=sample_size)
+    # idx = np.random.randint(0, x_star.shape[0], size=sample_size)
     lofi_train = lofi[idx, :]
     lofi_train[:, 2] += np.random.default_rng().normal(loc=0, scale=lofi_sigma_n, size=sample_size)
     # sifi_train = np.vstack((hifi_train, lofi_train))
 
     # 9) construct small prior array for initial conditioning in simulation WITH ADDED SAMPLE NOISE
-    sample_delta = 0.5
+    sample_delta = 0.2
     sample_grid = np.arange(0, 1 + sample_delta, sample_delta)
     x_prior = np.array([[i, j] for i in sample_grid for j in sample_grid])
     prior_idx = [np.logical_and(np.isclose(x[0], x_star[:, 0]), np.isclose(x[1], x_star[:, 1])) for x in x_prior]
@@ -421,6 +426,7 @@ def australian_wildfires():
     ax.set_title("Prior Points")
 
     plt.show()
+    prior_df.to_csv(f"Data/{out_name}_prior.csv", index=False)
 
     # 12) save files if distribution is deemed valid
     valid = input("Save distribution?")
@@ -430,7 +436,6 @@ def australian_wildfires():
         hifi_train_df.to_csv(f"Data/{out_name}_hifi_train.csv", index=False)
         lofi_train_df.to_csv(f"Data/{out_name}_lofi_train.csv", index=False)
         # sifi_train_df.to_csv(f"Data/{out_name}_sifi_train.csv", index=False)
-        prior_df.to_csv(f"Data/{out_name}_prior.csv", index=False)
         fig.savefig(f"Images/{out_name}/{out_name}_distribution.png")
 
     print("Done.")

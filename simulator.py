@@ -454,6 +454,19 @@ def compute_sample_tsp(clusters):
     return tours
 
 
+def todescato_prob(max_var_t, max_var_0):
+    """
+    Given the current maximum variance in each cell of a partition, and the initial maximum variance in a
+    partitions, return a probability in [0, 1] where 0 tends to exploit and 1 tends to explore
+
+    :param max_var_t: [nAgentsx1 numpy array] where i-th entry is max posterior var in cell i
+    :param max_var_0: [scalar] initial maximum variance to use as a normalization constant
+    :return: [nAgentsx1 numpy array where i-th entry is prob_explore
+    """
+    num_agents = max_var_t.shape[0]
+    return max_var_t / (max_var_0 * num_agents)
+
+
 def choi_threshold(threshold):
     """
     Given current threshold, determine threshold below which uncertainty should be reduced in this period of
@@ -462,7 +475,7 @@ def choi_threshold(threshold):
     :param threshold: [scalar] threshold value from previous step
     :return: [scalar] threshold value below which uncertainty should be reduced on this step
     """
-    return threshold / np.sqrt(2)
+    return 0.9 * threshold
 
 
 def choi_double(period):
@@ -841,7 +854,7 @@ def todescato(title, sim_num, iterations, agents, positions, truth, sigma_n, pri
     mu_star, var_star = model.predict(x_star)
     var = np.diag(var_star)
     max_var_t = np.amax(var) * np.ones((agents, 1))
-    prob_explore_t = max_var_t / max_var_0 * np.ones((agents, 1))
+    prob_explore_t = todescato_prob(max_var_t, max_var_0)
     explore_t = np.zeros((agents, 1))   # initialize to zero so agents do not sample on first iteration
     prev_positions = np.copy(positions)     # store previous iteration positions to compute distance
     centroids_t = np.copy(positions)     # initialize centroids governing Lloyd iterations to current positions
@@ -926,8 +939,8 @@ def todescato(title, sim_num, iterations, agents, positions, truth, sigma_n, pri
             plotter.show()
 
         # 13) based on max variance, make next iteration's explore/exploit decision
-        prob_explore_t = max_var_t / max_var_0
-        explore_t = np.array([int(random.random() < cutoff) for cutoff in prob_explore_t])  # Bernoulli wrt prob_explore_t
+        prob_explore_t = todescato_prob(max_var_t, max_var_0)
+        explore_t = np.array([int(random.random() < cutoff) for cutoff in prob_explore_t]).reshape(-1, 1)  # Bernoulli
 
         # 14) update agent positions (Todescato "Target-Points transmission")
         prev_positions = np.copy(positions)

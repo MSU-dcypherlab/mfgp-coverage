@@ -464,7 +464,7 @@ def todescato_prob(max_var_t, max_var_0):
     :return: [nAgentsx1 numpy array where i-th entry is prob_explore
     """
     num_agents = max_var_t.shape[0]
-    return max_var_t / (max_var_0 * num_agents)
+    return np.sqrt(max_var_t / (max_var_0 * num_agents))
 
 
 def choi_threshold(threshold):
@@ -475,7 +475,7 @@ def choi_threshold(threshold):
     :param threshold: [scalar] threshold value from previous step
     :return: [scalar] threshold value below which uncertainty should be reduced on this step
     """
-    return 0.9 * threshold
+    return 0.82 * threshold
 
 
 def choi_double(period):

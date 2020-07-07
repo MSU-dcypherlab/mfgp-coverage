@@ -103,7 +103,7 @@ def plot_loss(losses, name=None):
                         y2=mean_loss_df.iloc[:, i] + 2 * std_loss_df.iloc[:, i] / sqrt(num_simulations),
                         color=colors[i], alpha=0.2)
     plt.title("Loss by Iteration: Zoomed")
-    plt.ylim((0.0015, 0.004))
+    plt.ylim((0.0005, 0.0025))
     plt.savefig(f"Images/{name}/{name}_loss_zoomed.png") if name is not None else None
     plt.show()
 
@@ -417,7 +417,7 @@ def plot_samples(agents, name=None):
 if __name__ == "__main__":
 
     # define simulation names to be analyzed
-    sim_name = "australia9.1"
+    sim_name = "australia9.3"
     prefix = f"Data/{sim_name}"
     algorithms = ["todescato", "choi"]
     fidelities = ["nsf", "hsf", "hmf"]
@@ -457,9 +457,9 @@ if __name__ == "__main__":
     # compute_dist(agents)
 
     # plot analysis
-    plot_loss(losses, sim_name)
-    plot_regret(losses, sim_name)
+    # plot_loss(losses, sim_name)
+    # plot_regret(losses, sim_name)
     plot_var(agents, sim_name)
-    plot_explore(agents, sim_name)
-    plot_dist(agents, sim_name)
-    plot_samples(agents, sim_name)
+    # plot_explore(agents, sim_name)
+    # plot_dist(agents, sim_name)
+    # plot_samples(agents, sim_name)

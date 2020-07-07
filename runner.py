@@ -78,9 +78,9 @@ def run(n_processors=4):
 
     # 1) define simulation hyperparameters
     name = "Data/australia9"  # name of simulation, used as prefix of all associated input filenames
-    prefix = "Data/australia9.1"  # name of simulation, used as prefix of all associated output filenames
+    prefix = "Data/australia9.3"  # name of simulation, used as prefix of all associated output filenames
 
-    agents = 8          # number of agents to use in simulation
+    agents = 16          # number of agents to use in simulation
     iterations = 120    # number of iterations to run each simulation
     simulations = 100     # number of simulations to run
     sigma_n = 0.1       # sampling noise std. dev. on hifi data (should match distribution's generational parameter)

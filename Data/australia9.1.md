@@ -1,4 +1,4 @@
-# australia9
+# australia9.1
 
 Learning + Coverage simulation based on real-world
 [Kaggle dataset](https://www.kaggle.com/carlosparadis/fires-from-space-australia-and-new-zeland)
@@ -8,45 +8,24 @@ then *cover* areas with respect to the distribution.
 
 #### Major Changes
 
-- Constructed density function as sum of exponential bases instead of
-KDEs
-    - More control over lengthscale than in KDE
-    - Made high-fidelity lengthscale even shorter than before to make
-    coverage "harder" to accomplish well
-- Increased # prior points back to 36
-    - 9 simply wasn't enough to give useful prior information
-- Manually tuned GP hyperparameters to have sigma_n = 0.1
-    - Previously, I'd been adding noise to the training data and assuming
-    the hyperparameters converged to match when training, but the sample
-    noise hyperparameter estimate tended to converge very low (no noise)
-    - For example, when adding sigma_n = 0.5 white noise to training data
-    in australia7, sigma_n only converged to 0.25
-- Changed Todescato explore/exploit decision probability from (M / M_0) to
-(M / M_0)^2, where M is max posterior uncertainty and M_0 is initial max
-uncertainty
-    - Encourages more exploration
-- Changed Choi algorithm to roughly match the same level of exploration
-as Todescato by considering initial M, final M reached under Todescato, and
-solving the doubling trick to find the constant by which M must be reduced
-each period
-    - In this way, each algorithm reduced variance by approximately the
-    same amount over 120 iterations and took approximately the same
-    number of samples
-    - Normalizes the comparison between algorithms
-- Did not run periodic for the sake of time, but we know it works from
-the last simulation
-    - Not at all competitive with Todescato or Choi algorithms, but
-    a useful baseline for future reference
-- Next:
-    - change decision probabilities to explore less
-        - will highlight the utility of a prior
-        - will decrease computation time
-        - idea: normalize prob_explore in Todescato by the number of
-        agents in the environment, and again match Choi afterwards
-    - attempt with uncorrelated prior / negatively correlated prior
-        - will highlight the difference between different
-        fidelity approaches
-        - relevant to system resilience
+- Changed Todescato prob_explore calculation to _M / (M_0 * n)_ where *M*
+is the max posterior variance, *M_0* is the initial max posterior variance,
+and *n* is the number of agents in the environment
+    - Ensures the amount of samples taken is normalized by the number of
+    agents present, a problematic phenomenon beforehand
+    - Makes simulations with larger swarms more feasible - runtime increases
+    with the number of samples taken, and this new method of setting
+    prob_explore will shorten large-swarm runtime
+- Changed Choi max-variance-reduction-threshold-multiplier to 0.9 in order
+to match max posterior variance between the two algorithms
+- NEXT:
+    - Lower the epsilon value in distribution.py that sets a minimum
+    nonzero weight for each point such that robots are driven more toward
+    function peaks
+    - Simulate with 16 agents
+    - Simulate with different distributions
+    - Simulate with incorrect-prior distributions
+
 
 #### Hyperparameters
 
@@ -100,32 +79,26 @@ predict density at 0.02 resolution grid on unit square
 
 #### Runtime
 
-- Logged in [australia9_output.txt](australia9_output.txt)
+- Logged in [australia9.1_output.txt](australia9.1_output.txt)
 
 |Algorithm|Total Time (s)|Mean Time/Simulation with Multithreading (s)
 |---|---|---|
-|Todescato Null SF|3060.51|30.6|
-|Todescato Human SF|3108.03|31.8|
-|Todescato Human MF|4980.92|49.8|
-|Choi Null SF|21834.20|218.3|
-|Choi Human SF|19167.53|191.67|
-|Choi Human MF|26120.65|261.2|
-|Lloyd|191.35|1.91|
-|Total|78463.34|112.09|
+|Todescato Null SF|2304.153|23.04|
+|Todescato Human SF|2419.17|24.19|
+|Todescato Human MF|4276.26|42.76|
+|Choi Null SF|9942.05|99.42|
+|Choi Human SF|7398.83|73.98|
+|Choi Human MF|11100.25|111.00|
+|Lloyd|186.79|1.867|
+|Total|37627.66|53.75|
 
 #### Discussion
-- Exploring less and exploiting more will give the prior algorithms
-a leg up AND reduce computation time
+- Exploring less and exploiting more _did_ give advantage to having prior
     - Less sampling --> information is more valuable
     - Majority of computational bottleneck in Choi is sample planning;
     reducing the amount of exploration will speed everything up
-- Matching posterior variance of Todescato to Choi was a success and makes
+- Matched posterior variance of Todescato to Choi
 for a fairer comparison; continue this
-    - Consider normalizing prob_exploration in Todescato by n_agents
-    to explore less
-    - After running Todescato to see what posterior variance is, back-solve
-    the doubling equation of Choi to determine how much variance
-    must be reduced on each epoch
 - Human prior points?
     - 36 gives a more uniform coverage than 9, and makes more sense in
     the context of 8 agents
@@ -143,7 +116,7 @@ for a fairer comparison; continue this
     
 #### Performance
     
-![Loss](../Images/australia9/australia9_loss.png)
+![Loss](../Images/australia9.1/australia9.1_loss.png)
 
 - MF model appears to perform the best overall
 - HSF outperforms NSF early on by virtue of biased but approximately
@@ -151,9 +124,9 @@ correct prior information, but NSF outperforms HSF in the long run
 as it incorporates no biased information
 - Promising results - what I expected to see early on
 
-![LossZoomed](../Images/australia9/australia9_loss_zoomed.png)
+![LossZoomed](../Images/australia9.1/australia9.1_loss_zoomed.png)
 
-![Regret](../Images/australia9/australia9_regret.png)
+![Regret](../Images/australia9.1/australia9.1_regret.png)
 
 - Normalized WRT minimum loss configuration of Lloyd as zero
 - Given that each algorithm now reaches approximately the same level
@@ -161,18 +134,18 @@ of posterior variance at the end, regret is comparable between algorithms
 - MF model of each algorithm has lowest regret, followed by HSF then NSF
     - Again, proves the notion that good decisions early make a big impact 
 
-![RegretZoomed](../Images/australia9/australia9_regret_zoomed.png)
+![RegretZoomed](../Images/australia9.1/australia9.1_regret_zoomed.png)
 
-![Var](../Images/australia9/australia9_var.png)
+![Var](../Images/australia9.1/australia9.1_var.png)
 
 - Adjusted Choi threshold reduction scaling constant such that Choi
 algorithms would reduce the variance as much as Todescato algorithms
 
-![Explore](../Images/australia9/australia9_explore.png)
+![Explore](../Images/australia9.1/australia9.1_explore.png)
 
-![Distance](../Images/australia9/australia9_dist.png)
+![Distance](../Images/australia9.1/australia9.1_dist.png)
 
-![Total Distance](../Images/australia9/australia9_total_dist.png)
+![Total Distance](../Images/australia9.1/australia9.1_total_dist.png)
 
 - As noted before, Choi is much more efficient in motion: if the swarm is
 deployed in an environment in which motion is expensive, this is a 
@@ -181,22 +154,43 @@ strength to point out and consider
 - Across the fidelities, each algorithm seems to be clustered tightly, though
 HSF is the most confident and thus samples and travels the least
 
-![Samples](../Images/australia9/australia9_samples.png)
+![Samples](../Images/australia9.1/australia9.1_samples.png)
 
 - Note: this is the mean number of samples/cumulative number of samples
 by Iteration **PER AGENT** in each chart.
-    - With n = 8 agents, then, approximately 30 * 8 = 240 samples were taken
+    - With n = 8 agents, then, approximately 10 * 8 = 80 samples were taken
 - Interesting observation: Choi took slightly fewer cumulative samples in the 120 iterations,
  but reduced posterior variance slightly further than Todescato
     - Implies Choi is more efficient in motion and information gain?
     - Pre-planning helps each of these efficiencies
 
-![Total Samples](../Images/australia9/australia9_total_samples.png)
+![Total Samples](../Images/australia9.1/australia9.1_total_samples.png)
 
 #### Configurations
 
-- Did not save configuration images for this simulation, but could
-easily generate
+- Todescato Null SF
+
+![Todescato NSF](../Images/australia9.1/australia9.1_todescato_nsf.png)
+
+- Todescato Human SF
+
+![Todescato HSF](../Images/australia9.1/australia9.1_todescato_hsf.png)
+
+- Todescato Human MF
+
+![Todescato HMF](../Images/australia9.1/australia9.1_todescato_hmf.png)
+
+- Choi Null SF
+
+![Choi NSF](../Images/australia9.1/australia9.1_choi_nsf.png)
+
+- Choi Human SF
+
+![Choi HSF](../Images/australia9.1/australia9.1_choi_hsf.png)
+
+- Choi Human MF
+
+![Choi HMF](../Images/australia9.1/australia9.1_choi_hmf.png)
 
 #### Follow-up
 

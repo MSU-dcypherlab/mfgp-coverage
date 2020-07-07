@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 import scipy.stats
 
 """ Minimum value possible when normalizing function values (to avoid div-by-0 errors) """
-epsilon = 0.01
+epsilon = 0.0001
 
 
 def normalize(y, use_epsilon=True):

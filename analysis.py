@@ -103,7 +103,7 @@ def plot_loss(losses, name=None):
                         y2=mean_loss_df.iloc[:, i] + 2 * std_loss_df.iloc[:, i] / sqrt(num_simulations),
                         color=colors[i], alpha=0.2)
     plt.title("Loss by Iteration: Zoomed")
-    plt.ylim((0.001, 0.006))
+    plt.ylim((0.0015, 0.004))
     plt.savefig(f"Images/{name}/{name}_loss_zoomed.png") if name is not None else None
     plt.show()
 
@@ -179,17 +179,17 @@ def plot_regret(losses, name=None):
     # drop periodic and zoom in
     # regret_df = regret_df.drop(columns=["periodic_nsf", "periodic_hsf", "periodic_hmf"])
     # std_regret_df = std_regret_df.drop(columns=["periodic_nsf", "periodic_hsf", "periodic_hmf"])
-    plt.figure()
-    ax = regret_df.plot(color=colors)
-    for i in range(len(regret_df.columns)):
-        ax.fill_between(x=regret_df.index,
-                        y1=regret_df.iloc[:, i] - 2 * std_regret_df.iloc[:, i] / sqrt(num_simulations),
-                        y2=regret_df.iloc[:, i] + 2 * std_regret_df.iloc[:, i] / sqrt(num_simulations),
-                        color=colors[i], alpha=0.2)
-    plt.title("Regret by Iteration: Zoomed")
-    plt.ylim((0, 0.2))
-    plt.savefig(f"Images/{name}/{name}_regret_zoomed.png") if name is not None else None
-    plt.show()
+    # plt.figure()
+    # ax = regret_df.plot(color=colors)
+    # for i in range(len(regret_df.columns)):
+    #     ax.fill_between(x=regret_df.index,
+    #                     y1=regret_df.iloc[:, i] - 2 * std_regret_df.iloc[:, i] / sqrt(num_simulations),
+    #                     y2=regret_df.iloc[:, i] + 2 * std_regret_df.iloc[:, i] / sqrt(num_simulations),
+    #                     color=colors[i], alpha=0.2)
+    # plt.title("Regret by Iteration: Zoomed")
+    # plt.ylim((0, 0.2))
+    # plt.savefig(f"Images/{name}/{name}_regret_zoomed.png") if name is not None else None
+    # plt.show()
 
 
 def plot_var(agents, name=None):
@@ -420,11 +420,11 @@ if __name__ == "__main__":
     sim_name = "australia9.1"
     prefix = f"Data/{sim_name}"
     algorithms = ["todescato", "choi"]
-    fidelities = ["nsf", "hsf"]
+    fidelities = ["nsf", "hsf", "hmf"]
     names = [f"{prefix}_{a}_{f}" for a in algorithms for f in fidelities]
-    # names.append(f"{prefix}_lloyd")
+    names.append(f"{prefix}_lloyd")
     titles = [f"{a}_{f}" for a in algorithms for f in fidelities]
-    # titles.append("lloyd")
+    titles.append("lloyd")
 
     # define dtypes to be loaded
     loss_dtypes = {"SimNum": int, "Iteration": int, "Period": int,

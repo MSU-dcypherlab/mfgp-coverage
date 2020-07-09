@@ -457,9 +457,9 @@ if __name__ == "__main__":
     # compute_dist(agents)
 
     # plot analysis
-    # plot_loss(losses, sim_name)
-    # plot_regret(losses, sim_name)
+    plot_loss(losses, sim_name)
+    plot_regret(losses, sim_name)
     plot_var(agents, sim_name)
-    # plot_explore(agents, sim_name)
-    # plot_dist(agents, sim_name)
-    # plot_samples(agents, sim_name)
+    plot_explore(agents, sim_name)
+    plot_dist(agents, sim_name)
+    plot_samples(agents, sim_name)
